@@ -24,7 +24,25 @@ export function RequestFormPanel({
 }: RequestFormPanelProps) {
   return (
     <form className="form-panel" onSubmit={onCreateRequest}>
-      <h2>Request intake</h2>
+      <h2>Post details</h2>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', background: 'rgba(245, 237, 214, 0.75)', padding: '4px', borderRadius: '8px' }}>
+        <button
+          type="button"
+          className={requestForm.postType === 'HELP' ? 'primary-button compact' : 'ghost-button'}
+          style={{ flex: 1, border: 0, padding: '8px', minHeight: '36px', boxShadow: requestForm.postType === 'HELP' ? undefined : 'none' }}
+          onClick={() => setRequestForm({ ...requestForm, postType: 'HELP' })}
+        >
+          Material Help Request
+        </button>
+        <button
+          type="button"
+          className={requestForm.postType === 'FUNDRAISING' ? 'primary-button compact' : 'ghost-button'}
+          style={{ flex: 1, border: 0, padding: '8px', minHeight: '36px', boxShadow: requestForm.postType === 'FUNDRAISING' ? undefined : 'none' }}
+          onClick={() => setRequestForm({ ...requestForm, postType: 'FUNDRAISING' })}
+        >
+          Financial Fundraiser
+        </button>
+      </div>
       <label>
         Title
         <input required value={requestForm.title} onChange={(event) => setRequestForm({ ...requestForm, title: event.target.value })} />
@@ -64,13 +82,13 @@ export function RequestFormPanel({
         </label>
       </div>
       <label>
-        Authority document
+        Authority or verification letter
         <input accept="image/*,.pdf" disabled={!isApproved || isUploading} type="file" onChange={(event) => onDocumentUpload(event.target.files?.[0])} />
       </label>
-      {requestForm.localAuthDocUrl && (
-        <a className="document-link" href={requestForm.localAuthDocUrl} target="_blank" rel="noreferrer">
+      {requestForm.authorityDocumentUrl && (
+        <a className="document-link" href={requestForm.authorityDocumentUrl} target="_blank" rel="noreferrer">
           <FileCheck2 size={16} />
-          Uploaded document
+          Uploaded verification letter
         </a>
       )}
       {uploadMessage && <p className="form-message">{uploadMessage}</p>}
@@ -84,12 +102,39 @@ export function RequestFormPanel({
           <input required value={requestForm.beneficiaryPhone} onChange={(event) => setRequestForm({ ...requestForm, beneficiaryPhone: event.target.value })} />
         </label>
       </div>
-      <label>
-        Target quantity
-        <input required min="1" type="number" value={requestForm.targetQuantity} onChange={(event) => setRequestForm({ ...requestForm, targetQuantity: event.target.value })} />
-      </label>
-      <button className="primary-button" type="submit" disabled={!isApproved || isUploading || !requestForm.localAuthDocUrl}>
-        Save request
+      <div className="form-grid">
+        <label>
+          Point of contact
+          <input required value={requestForm.pointOfContactName} onChange={(event) => setRequestForm({ ...requestForm, pointOfContactName: event.target.value })} />
+        </label>
+        <label>
+          Contact phone
+          <input required value={requestForm.pointOfContactPhone} onChange={(event) => setRequestForm({ ...requestForm, pointOfContactPhone: event.target.value })} />
+        </label>
+      </div>
+      <div className="form-grid">
+        <label>
+          Local representative
+          <input required value={requestForm.localRepresentativeName} onChange={(event) => setRequestForm({ ...requestForm, localRepresentativeName: event.target.value })} />
+        </label>
+        <label>
+          Representative phone
+          <input required value={requestForm.localRepresentativePhone} onChange={(event) => setRequestForm({ ...requestForm, localRepresentativePhone: event.target.value })} />
+        </label>
+      </div>
+      {requestForm.postType === 'HELP' ? (
+        <label>
+          Target quantity
+          <input required min="1" type="number" value={requestForm.targetQuantity} onChange={(event) => setRequestForm({ ...requestForm, targetQuantity: event.target.value })} />
+        </label>
+      ) : (
+        <label>
+          Fundraising target amount
+          <input required min="1" type="number" value={requestForm.targetAmount} onChange={(event) => setRequestForm({ ...requestForm, targetAmount: event.target.value })} />
+        </label>
+      )}
+      <button className="primary-button" type="submit" disabled={!isApproved || isUploading || !requestForm.authorityDocumentUrl}>
+        Submit for admin review
       </button>
       {formMessage && <p className="form-message">{formMessage}</p>}
     </form>

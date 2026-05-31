@@ -52,8 +52,8 @@ button:disabled {
   min-height: 100vh;
   padding: 18px 28px 42px;
   background:
-    radial-gradient(circle at 12% 10%, rgba(229, 182, 119, 0.48), transparent 26%),
-    linear-gradient(135deg, rgba(61, 111, 75, 0.1), transparent 34%),
+    linear-gradient(180deg, rgba(255, 250, 240, 0.48), transparent 360px),
+    linear-gradient(135deg, rgba(61, 111, 75, 0.08), transparent 34%),
     var(--bg);
 }
 
@@ -261,6 +261,7 @@ button:disabled {
 
 .hero-copy {
   min-width: 0;
+  padding-bottom: 18px;
 }
 
 .eyebrow {
@@ -344,15 +345,55 @@ h2 {
   box-shadow: var(--shadow);
 }
 
-.flow-line {
+.hero-visual::after {
+  content: '';
   position: absolute;
-  inset: 92px 70px auto;
-  height: 190px;
-  border: 2px dashed rgba(95, 61, 28, 0.28);
-  border-left: 0;
-  border-bottom: 0;
-  border-radius: 0 80px 0 0;
-  animation: float-soft 6s ease-in-out infinite;
+  inset: 24px;
+  border: 1px solid rgba(95, 61, 28, 0.1);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+.map-panel {
+  position: absolute;
+  inset: 34px;
+  border: 1px solid rgba(95, 61, 28, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(61, 111, 75, 0.18), transparent 42%),
+    rgba(255, 250, 240, 0.62);
+}
+
+.map-grid {
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(0deg, transparent, transparent 35px, rgba(95, 61, 28, 0.08) 36px),
+    repeating-linear-gradient(90deg, transparent, transparent 35px, rgba(95, 61, 28, 0.08) 36px);
+}
+
+.map-pin {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 9px rgba(61, 111, 75, 0.14);
+}
+
+.pin-one {
+  top: 22%;
+  left: 22%;
+}
+
+.pin-two {
+  right: 24%;
+  top: 38%;
+}
+
+.pin-three {
+  left: 46%;
+  bottom: 26%;
 }
 
 .flow-card,
@@ -376,27 +417,55 @@ h2 {
 }
 
 .flow-card.intake {
-  left: 34px;
-  top: 72px;
+  left: 54px;
+  top: 70px;
 }
 
 .flow-card.verify {
-  right: 48px;
-  top: 190px;
+  right: 56px;
+  top: 178px;
   animation-delay: 600ms;
 }
 
 .flow-card.publish {
-  left: 86px;
-  bottom: 86px;
+  left: 70px;
+  bottom: 88px;
   animation-delay: 1100ms;
 }
 
 .hero-stat {
-  right: 34px;
-  bottom: 38px;
+  right: 54px;
+  bottom: 48px;
   display: block;
   padding: 20px;
+}
+
+.hero-metrics {
+  position: absolute;
+  left: 54px;
+  top: 174px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(84px, 1fr));
+  gap: 10px;
+}
+
+.hero-metrics div {
+  padding: 14px;
+  border: 1px solid rgba(95, 61, 28, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 250, 240, 0.92);
+  box-shadow: 0 12px 28px rgba(93, 65, 32, 0.1);
+}
+
+.hero-metrics strong {
+  display: block;
+  color: var(--text);
+  font-size: 24px;
+}
+
+.hero-metrics span {
+  color: var(--muted);
+  font-weight: 850;
 }
 
 .hero-stat span,
@@ -417,6 +486,7 @@ h2 {
 
 .feature-grid,
 .campaign-grid,
+.campaign-summary,
 .admin-grid,
 .stats-grid {
   display: grid;
@@ -428,8 +498,25 @@ h2 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.landing-feed {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.36fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+  padding-top: 4px;
+}
+
+.landing-feed > div:first-child {
+  padding: 18px;
+  border: 1px solid rgba(95, 61, 28, 0.14);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
 .feature-card,
 .campaign-card,
+.campaign-summary > article,
 .notice-panel,
 .request-list,
 .form-panel,
@@ -444,6 +531,7 @@ h2 {
 
 .feature-card,
 .campaign-card,
+.campaign-summary > article,
 .notice-panel,
 .request-list,
 .profile-panel,
@@ -495,6 +583,33 @@ h2 {
   justify-content: flex-end;
 }
 
+.campaign-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.campaign-summary > article {
+  display: grid;
+  gap: 10px;
+}
+
+.campaign-summary span {
+  color: var(--text);
+  font-size: 30px;
+  font-weight: 950;
+}
+
+.campaign-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .campaign-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -521,6 +636,22 @@ h2 {
 .notice-panel {
   display: grid;
   gap: 10px;
+}
+
+.success-panel,
+.kyc-receipt {
+  justify-items: start;
+  padding: 28px;
+}
+
+.status-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #f1d7ac;
+  color: var(--primary-dark);
 }
 
 .notice-panel strong {
@@ -579,6 +710,18 @@ h2 {
   font-weight: 900;
 }
 
+.inline-status {
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.receipt-links {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+}
+
 .document-link {
   display: inline-flex;
   align-items: center;
@@ -619,8 +762,9 @@ h2 {
 .empty-state {
   margin: 0;
   padding: 22px;
-  border: 1px dashed var(--line);
+  border: 1px solid var(--line);
   border-radius: 8px;
+  background: rgba(255, 250, 240, 0.55);
   color: var(--muted);
   text-align: center;
 }
@@ -658,6 +802,14 @@ h2 {
 
 .request-card dl {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding-top: 2px;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 4px;
 }
 
 dt {
@@ -812,6 +964,7 @@ dd {
 
   .home-page,
   .split-panel,
+  .landing-feed,
   .admin-grid {
     grid-template-columns: 1fr;
   }
@@ -867,6 +1020,7 @@ dd {
 
   .feature-grid,
   .campaign-grid,
+  .campaign-summary,
   .stats-grid,
   .form-grid,
   .request-card dl {

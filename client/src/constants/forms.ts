@@ -1,25 +1,34 @@
 import type { KycForm, Page, RequestForm } from '../types/app'
 
 export const initialRequestForm: RequestForm = {
+  postType: 'HELP',
   title: '',
   description: '',
   category: 'FOOD',
   urgency: 'MEDIUM',
   latitude: '',
   longitude: '',
-  localAuthDocUrl: '',
-  localAuthDocPublicId: '',
+  authorityDocumentUrl: '',
+  authorityDocumentPublicId: '',
   beneficiaryName: '',
   beneficiaryPhone: '',
+  pointOfContactName: '',
+  pointOfContactPhone: '',
+  localRepresentativeName: '',
+  localRepresentativePhone: '',
   targetQuantity: '1',
+  targetAmount: '',
 }
 
 export const initialKycForm: KycForm = {
-  organization: '',
-  phone: '',
-  district: '',
-  documentUrl: '',
-  documentPublicId: '',
+  legalName: '',
+  dateOfBirth: '',
+  governmentIdNumber: '',
+  photoUrl: '',
+  photoPublicId: '',
+  phoneNumber: '',
+  governmentDocumentUrl: '',
+  governmentDocumentPublicId: '',
   notes: '',
 }
 

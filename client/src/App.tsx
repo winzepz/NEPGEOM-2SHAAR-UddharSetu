@@ -16,35 +16,57 @@ import type {
   AuthUser,
   GoogleAuthResponse,
   HealthResponse,
-  HelpRequest,
-  HelpRequestsResponse,
+  KycSubmission,
+  KycSubmissionsResponse,
   KycForm,
   Page,
+  PostsResponse,
+  ReliefPost,
   RequestForm,
 } from './types/app'
 
 function App() {
-  const [apiStatus, setApiStatus] = useState('Checking API...')
+  const [apiStatus, setApiStatus] = useState('Checking platform status...')
   const [authMode, setAuthMode] = useState<AuthMode | null>(null)
   const [authMessage, setAuthMessage] = useState('')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [page, setPage] = useState<Page>('home')
-  const [publicRequests, setPublicRequests] = useState<HelpRequest[]>([])
-  const [myRequests, setMyRequests] = useState<HelpRequest[]>([])
+  const [publicRequests, setPublicRequests] = useState<ReliefPost[]>([])
+  const [myRequests, setMyRequests] = useState<ReliefPost[]>([])
+  const [reviewPosts, setReviewPosts] = useState<ReliefPost[]>([])
+  const [kycSubmissions, setKycSubmissions] = useState<KycSubmission[]>([])
+  const [kycSubmission, setKycSubmission] = useState<KycSubmission | null>(null)
   const [requestForm, setRequestForm] = useState<RequestForm>(initialRequestForm)
   const [kycForm, setKycForm] = useState<KycForm>(initialKycForm)
   const [formMessage, setFormMessage] = useState('')
   const [kycMessage, setKycMessage] = useState('')
-  const [uploadMessage, setUploadMessage] = useState('')
+  const [uploadMessages, setUploadMessages] = useState({
+    request: '',
+    kycPhoto: '',
+    kycDocument: '',
+  })
+  const [kycSubmitted, setKycSubmitted] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const isApproved = user?.status === 'APPROVED'
   const isAdmin = user?.role === 'SUPER_ADMIN'
 
   const myOpenRequests = useMemo(
-    () => myRequests.filter((request) => request.status !== 'FULFILLED').length,
+    () => myRequests.filter((request) => request.reviewStatus === 'APPROVED').length,
     [myRequests],
   )
+
+  const fetchMyKyc = async () => {
+    try {
+      const res = await fetch('/api/kyc/me', { credentials: 'include' })
+      if (res.ok) {
+        const data = (await res.json()) as { submission: KycSubmission | null }
+        setKycSubmission(data.submission)
+      }
+    } catch (error) {
+      console.error('Failed to fetch KYC:', error)
+    }
+  }
 
   useEffect(() => {
     document.documentElement.style.scrollBehavior = 'smooth'
@@ -56,16 +78,38 @@ function App() {
 
         return response.json() as Promise<HealthResponse>
       })
-      .then((data) =>
-        setApiStatus(
-          data.database
-            ? `${data.service}: ${data.status}, database ${data.database}`
-            : `${data.service}: ${data.status}`,
-        ),
-      )
-      .catch(() => setApiStatus('API unavailable'))
+      .then(() => setApiStatus('Platform services are online.'))
+      .catch(() => setApiStatus('Platform status is temporarily unavailable.'))
 
-    loadPublicRequests()
+    loadPublicPosts()
+
+    // Check for Khalti callback parameters
+    const params = new URLSearchParams(window.location.search)
+    const pidx = params.get('pidx')
+    if (pidx) {
+      setAuthMessage('Verifying donation payment...')
+      fetch('/api/donations/verify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pidx }),
+      })
+        .then(async (res) => {
+          const data = (await res.json().catch(() => ({}))) as { message?: string }
+          if (res.ok) {
+            setAuthMessage('Thank you! Your donation was received successfully.')
+            loadPublicPosts()
+          } else {
+            setAuthMessage(data.message || 'Donation verification failed.')
+          }
+          window.history.replaceState({}, document.title, window.location.pathname)
+        })
+        .catch(() => {
+          setAuthMessage('Network error verifying payment.')
+          window.history.replaceState({}, document.title, window.location.pathname)
+        })
+    }
   }, [])
 
   useEffect(() => {
@@ -85,9 +129,11 @@ function App() {
 
   useEffect(() => {
     if (user) {
-      loadMyRequests()
+      loadMyPosts()
+      fetchMyKyc()
     } else {
       setMyRequests([])
+      setKycSubmission(null)
     }
   }, [user])
 
@@ -117,7 +163,8 @@ function App() {
       setUser(data.user)
       setAuthMessage(authMode === 'login' ? `Welcome back, ${displayName}.` : `Account created for ${displayName}.`)
       setAuthMode(null)
-      setPage('worker')
+      await fetchMyKyc()
+      setPage(data.user.status === 'APPROVED' ? 'worker' : 'kyc')
     } catch {
       setAuthMessage('Google sign-in worked, but server verification failed.')
     }
@@ -130,6 +177,7 @@ function App() {
     }).catch(() => undefined)
     googleLogout()
     setUser(null)
+    setKycSubmission(null)
     setAuthMode(null)
     setAuthMessage('')
     setPage('home')
@@ -140,7 +188,7 @@ function App() {
     setFormMessage('')
 
     try {
-      const response = await fetch('/api/help-requests', {
+      const response = await fetch('/api/posts', {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -151,6 +199,7 @@ function App() {
           latitude: Number(requestForm.latitude),
           longitude: Number(requestForm.longitude),
           targetQuantity: Number(requestForm.targetQuantity),
+          targetAmount: Number(requestForm.targetAmount),
         }),
       })
 
@@ -161,30 +210,59 @@ function App() {
       }
 
       setRequestForm(initialRequestForm)
-      setFormMessage('Request saved to the database.')
-      await Promise.all([loadMyRequests(), loadPublicRequests()])
+      setUploadMessages((currentMessages) => ({ ...currentMessages, request: '' }))
+      setFormMessage('Your post was submitted for review.')
+      await Promise.all([loadMyPosts(), loadPublicPosts()])
     } catch (error) {
       setFormMessage(error instanceof Error ? error.message : 'Could not create request.')
     }
   }
 
-  const handleKycSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleKycSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setKycMessage('KYC frontend is ready. Backend review storage can be added in the next chunk.')
+    setKycMessage('')
+
+    try {
+      const response = await fetch('/api/kyc', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(kycForm),
+      })
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Could not submit KYC.')
+      }
+
+      setKycSubmitted(true)
+      setUser((currentUser) => (currentUser ? { ...currentUser, status: 'PENDING' } : currentUser))
+      setKycMessage('Your KYC has been submitted for review.')
+      await fetchMyKyc()
+    } catch (error) {
+      setKycMessage(error instanceof Error ? error.message : 'Could not submit KYC.')
+    }
   }
 
-  const handleDocumentUpload = async (file: File | undefined, target: 'request' | 'kyc') => {
+  const handleDocumentUpload = async (file: File | undefined, target: 'request' | 'kyc-photo' | 'kyc-document') => {
     if (!file) {
       return
     }
 
-    setUploadMessage('')
+    const messageKey = target === 'request' ? 'request' : target === 'kyc-photo' ? 'kycPhoto' : 'kycDocument'
+    setUploadMessages((currentMessages) => ({ ...currentMessages, [messageKey]: '' }))
     setIsUploading(true)
 
     try {
       const signatureResponse = await fetch('/api/media/upload-signature', {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ purpose: target === 'request' ? 'post' : 'kyc' }),
       })
       const signatureData = await signatureResponse.json()
 
@@ -206,44 +284,61 @@ function App() {
       const uploadData = await uploadResponse.json()
 
       if (!uploadResponse.ok) {
-        throw new Error(uploadData.error?.message || 'Cloudinary upload failed.')
+        throw new Error(uploadData.error?.message || 'Upload failed. Please try again.')
       }
 
       if (target === 'request') {
         setRequestForm((currentForm) => ({
           ...currentForm,
-          localAuthDocUrl: uploadData.secure_url,
-          localAuthDocPublicId: uploadData.public_id,
+          authorityDocumentUrl: uploadData.secure_url,
+          authorityDocumentPublicId: uploadData.public_id,
+        }))
+      } else if (target === 'kyc-photo') {
+        setKycForm((currentForm) => ({
+          ...currentForm,
+          photoUrl: uploadData.secure_url,
+          photoPublicId: uploadData.public_id,
         }))
       } else {
         setKycForm((currentForm) => ({
           ...currentForm,
-          documentUrl: uploadData.secure_url,
-          documentPublicId: uploadData.public_id,
+          governmentDocumentUrl: uploadData.secure_url,
+          governmentDocumentPublicId: uploadData.public_id,
         }))
       }
 
-      setUploadMessage('Document uploaded to Cloudinary.')
+      setUploadMessages((currentMessages) => ({
+        ...currentMessages,
+        [messageKey]:
+          target === 'kyc-photo'
+            ? 'Profile photo uploaded successfully.'
+            : target === 'kyc-document'
+              ? 'Government document uploaded successfully.'
+              : 'Authority document uploaded successfully.',
+      }))
     } catch (error) {
-      setUploadMessage(error instanceof Error ? error.message : 'Upload failed.')
+      setUploadMessages((currentMessages) => ({
+        ...currentMessages,
+        [messageKey]: error instanceof Error ? error.message : 'Upload failed. Please try again.',
+      }))
     } finally {
       setIsUploading(false)
     }
   }
 
-  async function loadPublicRequests() {
-    const response = await fetch('/api/help-requests')
+  async function loadPublicPosts() {
+    const response = await fetch('/api/posts')
 
     if (!response.ok) {
       return
     }
 
-    const data = (await response.json()) as HelpRequestsResponse
-    setPublicRequests(data.helpRequests)
+    const data = (await response.json()) as PostsResponse
+    setPublicRequests(data.posts)
   }
 
-  async function loadMyRequests() {
-    const response = await fetch('/api/me/help-requests', {
+  async function loadMyPosts() {
+    const response = await fetch('/api/me/posts', {
       credentials: 'include',
     })
 
@@ -251,8 +346,41 @@ function App() {
       return
     }
 
-    const data = (await response.json()) as HelpRequestsResponse
-    setMyRequests(data.helpRequests)
+    const data = (await response.json()) as PostsResponse
+    setMyRequests(data.posts)
+  }
+
+  async function loadAdminReviewData() {
+    const [kycResponse, postsResponse] = await Promise.all([
+      fetch('/api/admin/kyc', { credentials: 'include' }),
+      fetch('/api/admin/posts', { credentials: 'include' }),
+    ])
+
+    if (kycResponse.ok) {
+      const data = (await kycResponse.json()) as KycSubmissionsResponse
+      setKycSubmissions(data.submissions)
+    }
+
+    if (postsResponse.ok) {
+      const data = (await postsResponse.json()) as PostsResponse
+      setReviewPosts(data.posts)
+    }
+  }
+
+  async function handleAdminReview(kind: 'kyc' | 'post', id: string, status: 'APPROVED' | 'REJECTED', adminNotes?: string) {
+    const endpoint = kind === 'kyc' ? `/api/admin/kyc/${id}/review` : `/api/admin/posts/${id}/review`
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status, adminNotes }),
+    })
+
+    if (response.ok) {
+      await Promise.all([loadAdminReviewData(), loadPublicPosts()])
+    }
   }
 
   const openAuth = (mode: AuthMode) => {
@@ -261,6 +389,20 @@ function App() {
   }
 
   const goToPage = (nextPage: Page) => {
+    if (nextPage === 'worker' && user && user.status !== 'APPROVED') {
+      setPage('kyc')
+      setKycMessage(
+        user.status === 'REJECTED'
+          ? 'Your verification needs attention before you can create posts.'
+          : kycSubmitted
+            ? 'Your KYC is pending. Posting unlocks after approval.'
+            : 'Complete KYC to create help requests or fundraising campaigns.',
+      )
+      setIsMenuOpen(false)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
     setPage(nextPage)
     setIsMenuOpen(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -283,14 +425,27 @@ function App() {
         <HomePage
           apiStatus={apiStatus}
           publicRequests={publicRequests}
+          user={user}
           onLogin={() => openAuth('login')}
           onSignup={() => openAuth('signup')}
           onNavigate={goToPage}
+          onActionSuccess={loadPublicPosts}
         />
       )}
 
-      {page === 'requests' && <RequestsPage publicRequests={publicRequests} onSignup={() => openAuth('signup')} />}
-      {page === 'campaigns' && <CampaignsPage publicRequests={publicRequests} />}
+      {page === 'requests' && (
+        <RequestsPage
+          publicRequests={publicRequests}
+          onSignup={() => openAuth('signup')}
+          onActionSuccess={loadPublicPosts}
+        />
+      )}
+      {page === 'campaigns' && (
+        <CampaignsPage
+          publicRequests={publicRequests}
+          onActionSuccess={loadPublicPosts}
+        />
+      )}
       {page === 'worker' && (
         <WorkerPage
           formMessage={formMessage}
@@ -300,12 +455,13 @@ function App() {
           myRequests={myRequests}
           requestForm={requestForm}
           setRequestForm={setRequestForm}
-          uploadMessage={uploadMessage}
+          uploadMessage={uploadMessages.request}
           user={user}
           onCreateRequest={handleCreateRequest}
           onDocumentUpload={(file) => handleDocumentUpload(file, 'request')}
           onLogin={() => openAuth('login')}
           onKyc={() => goToPage('kyc')}
+          onActionSuccess={loadPublicPosts}
         />
       )}
       {page === 'kyc' && (
@@ -313,15 +469,32 @@ function App() {
           isUploading={isUploading}
           kycForm={kycForm}
           kycMessage={kycMessage}
+          photoUploadMessage={uploadMessages.kycPhoto}
           setKycForm={setKycForm}
-          uploadMessage={uploadMessage}
+          documentUploadMessage={uploadMessages.kycDocument}
           user={user}
-          onDocumentUpload={(file) => handleDocumentUpload(file, 'kyc')}
+          onPhotoUpload={(file) => handleDocumentUpload(file, 'kyc-photo')}
+          onDocumentUpload={(file) => handleDocumentUpload(file, 'kyc-document')}
           onLogin={() => openAuth('login')}
+          onCampaigns={() => goToPage('campaigns')}
+          onWorker={() => goToPage('worker')}
           onSubmit={handleKycSubmit}
+          kycSubmission={kycSubmission}
+          setKycSubmission={setKycSubmission}
         />
       )}
-      {page === 'admin' && <AdminPage isAdmin={isAdmin} publicRequests={publicRequests} user={user} onLogin={() => openAuth('login')} />}
+      {page === 'admin' && (
+        <AdminPage
+          isAdmin={isAdmin}
+          kycSubmissions={kycSubmissions}
+          publicRequests={publicRequests}
+          reviewPosts={reviewPosts}
+          user={user}
+          onLogin={() => openAuth('login')}
+          onLoadReviewData={loadAdminReviewData}
+          onReview={handleAdminReview}
+        />
+      )}
       {page === 'profile' && <ProfilePage myRequests={myRequests} user={user} onLogin={() => openAuth('login')} />}
 
       {authMode && !user && (

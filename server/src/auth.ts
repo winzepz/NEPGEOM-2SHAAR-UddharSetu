@@ -7,7 +7,7 @@ const sessionDurationMs = 1000 * 60 * 60 * 24 * 7
 
 export type User = {
   id: string
-  googleId: string
+  googleId: string | null
   email: string
   fullName: string
   picture: string | null
@@ -17,7 +17,7 @@ export type User = {
 
 type UserRow = {
   id: string
-  google_id: string
+  google_id: string | null
   email: string
   full_name: string
   picture: string | null
@@ -54,8 +54,9 @@ export async function upsertGoogleUser(input: {
     `
       insert into users (google_id, email, full_name, picture, last_login_at)
       values ($1, $2, $3, $4, now())
-      on conflict (google_id)
+      on conflict (email)
       do update set
+        google_id = excluded.google_id,
         email = excluded.email,
         full_name = excluded.full_name,
         picture = excluded.picture,

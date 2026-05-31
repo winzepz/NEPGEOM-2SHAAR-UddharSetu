@@ -19,6 +19,28 @@ import {
   listUserHelpRequests,
   parseHelpRequestInput,
 } from './helpRequests.js'
+import {
+  getLatestUserKyc,
+  listKycSubmissions,
+  parseKycInput,
+  parseReviewInput,
+  reviewKycSubmission,
+  submitKyc,
+} from './kyc.js'
+import {
+  createReliefPost,
+  listPublicPosts,
+  listReviewPosts,
+  listUserPosts,
+  parsePostInput,
+  reviewPost,
+} from './posts.js'
+import {
+  initiatePayment,
+  verifyPayment,
+  createMaterialPledge,
+  completeMaterialPledge,
+} from './donations.js'
 
 dotenv.config()
 
@@ -122,17 +144,165 @@ app.post('/api/media/upload-signature', async (request, response) => {
     return
   }
 
-  if (user.status !== 'APPROVED') {
-    response.status(403).json({ message: 'Your account must be approved before uploading media.' })
-    return
-  }
+  const purpose = typeof request.body?.purpose === 'string' ? request.body.purpose : 'authority-documents'
+  const folder = purpose === 'kyc' ? 'kyc-documents' : 'authority-documents'
 
   try {
-    response.json(createUploadSignature('authority-documents'))
+    response.json(createUploadSignature(folder))
   } catch (error) {
     response.status(500).json({
       message: error instanceof Error ? error.message : 'Cloudinary upload is not configured.',
     })
+  }
+})
+
+app.post('/api/kyc', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user) {
+    response.status(401).json({ message: 'Not authenticated.' })
+    return
+  }
+
+  try {
+    const input = parseKycInput(request.body)
+    const submission = await submitKyc(user.id, input)
+
+    response.status(201).json({ submission })
+  } catch (error) {
+    response.status(400).json({
+      message: error instanceof Error ? error.message : 'Invalid KYC submission.',
+    })
+  }
+})
+
+app.get('/api/kyc/me', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user) {
+    response.status(401).json({ message: 'Not authenticated.' })
+    return
+  }
+
+  try {
+    const submission = await getLatestUserKyc(user.id)
+    response.json({ submission })
+  } catch (error) {
+    response.status(500).json({
+      message: error instanceof Error ? error.message : 'Failed to fetch KYC submission.',
+    })
+  }
+})
+
+app.get('/api/posts', async (_request, response) => {
+  const posts = await listPublicPosts()
+
+  response.json({ posts })
+})
+
+app.get('/api/me/posts', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user) {
+    response.status(401).json({ message: 'Not authenticated.' })
+    return
+  }
+
+  const posts = await listUserPosts(user.id)
+
+  response.json({ posts })
+})
+
+app.post('/api/posts', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user) {
+    response.status(401).json({ message: 'Not authenticated.' })
+    return
+  }
+
+  if (user.status !== 'APPROVED') {
+    response.status(403).json({ message: 'KYC must be approved before creating help or fundraising posts.' })
+    return
+  }
+
+  try {
+    const input = parsePostInput(request.body)
+    const post = await createReliefPost(input, user)
+
+    response.status(201).json({ post })
+  } catch (error) {
+    response.status(400).json({
+      message: error instanceof Error ? error.message : 'Invalid post.',
+    })
+  }
+})
+
+app.get('/api/admin/kyc', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user || user.role !== 'SUPER_ADMIN') {
+    response.status(403).json({ message: 'Admin role required.' })
+    return
+  }
+
+  response.json({ submissions: await listKycSubmissions('PENDING') })
+})
+
+app.post('/api/admin/kyc/:id/review', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user || user.role !== 'SUPER_ADMIN') {
+    response.status(403).json({ message: 'Admin role required.' })
+    return
+  }
+
+  try {
+    const input = parseReviewInput(request.body)
+    const submission = await reviewKycSubmission(request.params.id, user.id, input.status, input.adminNotes)
+
+    if (!submission) {
+      response.status(404).json({ message: 'KYC submission not found.' })
+      return
+    }
+
+    response.json({ submission })
+  } catch (error) {
+    response.status(400).json({ message: error instanceof Error ? error.message : 'Invalid review.' })
+  }
+})
+
+app.get('/api/admin/posts', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user || user.role !== 'SUPER_ADMIN') {
+    response.status(403).json({ message: 'Admin role required.' })
+    return
+  }
+
+  response.json({ posts: await listReviewPosts() })
+})
+
+app.post('/api/admin/posts/:id/review', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user || user.role !== 'SUPER_ADMIN') {
+    response.status(403).json({ message: 'Admin role required.' })
+    return
+  }
+
+  try {
+    const input = parseReviewInput(request.body)
+    const post = await reviewPost(request.params.id, user.id, input.status, input.adminNotes)
+
+    if (!post) {
+      response.status(404).json({ message: 'Post not found.' })
+      return
+    }
+
+    response.json({ post })
+  } catch (error) {
+    response.status(400).json({ message: error instanceof Error ? error.message : 'Invalid review.' })
   }
 })
 
@@ -155,30 +325,10 @@ app.get('/api/me/help-requests', async (request, response) => {
   response.json({ helpRequests })
 })
 
-app.post('/api/help-requests', async (request, response) => {
-  const user = await getSessionUser(request)
-
-  if (!user) {
-    response.status(401).json({ message: 'Not authenticated.' })
-    return
-  }
-
-  if (user.status !== 'APPROVED') {
-    response.status(403).json({ message: 'Your account must be approved before posting requests.' })
-    return
-  }
-
-  try {
-    const input = parseHelpRequestInput(request.body)
-    const helpRequest = await createHelpRequest(input, user)
-
-    response.status(201).json({ helpRequest })
-  } catch (error) {
-    response.status(400).json({
-      message: error instanceof Error ? error.message : 'Invalid request.',
-    })
-  }
-})
+app.post('/api/donations/initiate', initiatePayment)
+app.post('/api/donations/verify', verifyPayment)
+app.post('/api/pledges/material', createMaterialPledge)
+app.post('/api/worker/pledges/complete', completeMaterialPledge)
 
 initializeDatabase()
   .then(() => {

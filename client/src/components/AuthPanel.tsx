@@ -29,7 +29,7 @@ export function AuthPanel({ authMode, onClose, onError, onSuccess }: AuthPanelPr
         />
       </div>
 
-      <p className="auth-note">Google verifies identity, then the Express API stores or loads your user record.</p>
+      <p className="auth-note">Google sign-in keeps your account secure and helps us protect verified relief workflows.</p>
     </section>
   )
 }

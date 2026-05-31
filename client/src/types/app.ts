@@ -11,7 +11,7 @@ export type AuthUser = {
   email?: string
   fullName?: string
   picture?: string | null
-  googleId?: string
+  googleId?: string | null
   role?: string
   status?: 'PENDING' | 'APPROVED' | 'REJECTED'
 }
@@ -43,29 +43,94 @@ export type HelpRequestsResponse = {
   helpRequests: HelpRequest[]
 }
 
+export type ReliefPost = {
+  id: string
+  authorId: string
+  authorName: string
+  postType: 'HELP' | 'FUNDRAISING'
+  title: string
+  description: string
+  category: string
+  urgency: string
+  latitude: number
+  longitude: number
+  beneficiaryName: string
+  beneficiaryPhone: string
+  pointOfContactName: string
+  pointOfContactPhone: string
+  localRepresentativeName: string
+  localRepresentativePhone: string
+  targetQuantity: number | null
+  targetAmount: number | null
+  fulfilledQuantity: number
+  fulfilledAmount: number
+  authorityDocumentUrl: string
+  authorityDocumentPublicId: string | null
+  reviewStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
+  adminNotes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type PostsResponse = {
+  posts: ReliefPost[]
+}
+
+export type KycSubmission = {
+  id: string
+  userId: string
+  userName: string
+  userEmail: string
+  legalName: string
+  dateOfBirth: string
+  governmentIdNumber: string
+  photoUrl: string
+  photoPublicId: string | null
+  phoneNumber: string
+  governmentDocumentUrl: string
+  governmentDocumentPublicId: string | null
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  adminNotes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type KycSubmissionsResponse = {
+  submissions: KycSubmission[]
+}
+
 export type AuthMode = 'login' | 'signup'
 export type Page = 'home' | 'requests' | 'campaigns' | 'worker' | 'kyc' | 'admin' | 'profile'
 
 export type RequestForm = {
+  postType: 'HELP' | 'FUNDRAISING'
   title: string
   description: string
   category: string
   urgency: string
   latitude: string
   longitude: string
-  localAuthDocUrl: string
-  localAuthDocPublicId: string
+  authorityDocumentUrl: string
+  authorityDocumentPublicId: string
   beneficiaryName: string
   beneficiaryPhone: string
+  pointOfContactName: string
+  pointOfContactPhone: string
+  localRepresentativeName: string
+  localRepresentativePhone: string
   targetQuantity: string
+  targetAmount: string
 }
 
 export type KycForm = {
-  organization: string
-  phone: string
-  district: string
-  documentUrl: string
-  documentPublicId: string
+  legalName: string
+  dateOfBirth: string
+  governmentIdNumber: string
+  photoUrl: string
+  photoPublicId: string
+  phoneNumber: string
+  governmentDocumentUrl: string
+  governmentDocumentPublicId: string
   notes: string
 }
 
