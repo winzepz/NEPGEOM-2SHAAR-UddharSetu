@@ -64,5 +64,34 @@ export async function initializeDatabase() {
 
     create index if not exists user_sessions_user_id_idx on user_sessions(user_id);
     create index if not exists user_sessions_expires_at_idx on user_sessions(expires_at);
+
+    create table if not exists help_requests (
+      id uuid primary key default gen_random_uuid(),
+      title text not null,
+      description text not null,
+      category text not null
+        check (category in ('FOOD', 'CLOTHES', 'VOLUNTEER', 'MONEY', 'OTHER')),
+      urgency text not null default 'MEDIUM'
+        check (urgency in ('CRITICAL', 'HIGH', 'MEDIUM')),
+      latitude double precision not null,
+      longitude double precision not null,
+      local_auth_doc_url text not null,
+      local_auth_doc_public_id text,
+      beneficiary_name text not null,
+      beneficiary_phone text not null,
+      target_quantity integer not null default 1 check (target_quantity > 0),
+      fulfilled_quantity integer not null default 0 check (fulfilled_quantity >= 0),
+      status text not null default 'OPEN'
+        check (status in ('OPEN', 'PARTIALLY_FULFILLED', 'FULFILLED')),
+      reporter_id uuid not null references users(id) on delete restrict,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create index if not exists help_requests_status_idx on help_requests(status);
+    create index if not exists help_requests_reporter_id_idx on help_requests(reporter_id);
+
+    alter table help_requests
+      add column if not exists local_auth_doc_public_id text;
   `)
 }

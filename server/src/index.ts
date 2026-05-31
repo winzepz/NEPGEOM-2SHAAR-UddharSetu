@@ -11,7 +11,14 @@ import {
   setSessionCookie,
   upsertGoogleUser,
 } from './auth.js'
+import { createUploadSignature } from './cloudinary.js'
 import { checkDatabaseConnection, initializeDatabase } from './db.js'
+import {
+  createHelpRequest,
+  listOpenHelpRequests,
+  listUserHelpRequests,
+  parseHelpRequestInput,
+} from './helpRequests.js'
 
 dotenv.config()
 
@@ -105,6 +112,72 @@ app.post('/api/auth/logout', async (request, response) => {
   await deleteSession(request)
   clearSessionCookie(response)
   response.status(204).send()
+})
+
+app.post('/api/media/upload-signature', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user) {
+    response.status(401).json({ message: 'Not authenticated.' })
+    return
+  }
+
+  if (user.status !== 'APPROVED') {
+    response.status(403).json({ message: 'Your account must be approved before uploading media.' })
+    return
+  }
+
+  try {
+    response.json(createUploadSignature('authority-documents'))
+  } catch (error) {
+    response.status(500).json({
+      message: error instanceof Error ? error.message : 'Cloudinary upload is not configured.',
+    })
+  }
+})
+
+app.get('/api/help-requests', async (_request, response) => {
+  const helpRequests = await listOpenHelpRequests()
+
+  response.json({ helpRequests })
+})
+
+app.get('/api/me/help-requests', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user) {
+    response.status(401).json({ message: 'Not authenticated.' })
+    return
+  }
+
+  const helpRequests = await listUserHelpRequests(user.id)
+
+  response.json({ helpRequests })
+})
+
+app.post('/api/help-requests', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user) {
+    response.status(401).json({ message: 'Not authenticated.' })
+    return
+  }
+
+  if (user.status !== 'APPROVED') {
+    response.status(403).json({ message: 'Your account must be approved before posting requests.' })
+    return
+  }
+
+  try {
+    const input = parseHelpRequestInput(request.body)
+    const helpRequest = await createHelpRequest(input, user)
+
+    response.status(201).json({ helpRequest })
+  } catch (error) {
+    response.status(400).json({
+      message: error instanceof Error ? error.message : 'Invalid request.',
+    })
+  }
 })
 
 initializeDatabase()
