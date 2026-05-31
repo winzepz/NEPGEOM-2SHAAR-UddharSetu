@@ -1,8 +1,17 @@
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import dotenv from 'dotenv'
 import express from 'express'
 import { OAuth2Client } from 'google-auth-library'
-import { checkDatabaseConnection } from './db.js'
+import {
+  clearSessionCookie,
+  createSession,
+  deleteSession,
+  getSessionUser,
+  setSessionCookie,
+  upsertGoogleUser,
+} from './auth.js'
+import { checkDatabaseConnection, initializeDatabase } from './db.js'
 
 dotenv.config()
 
@@ -11,7 +20,13 @@ const port = Number(process.env.PORT) || 5000
 const googleClientId = process.env.GOOGLE_CLIENT_ID
 const googleClient = new OAuth2Client(googleClientId)
 
-app.use(cors())
+app.use(
+  cors({
+    credentials: true,
+    origin: ['http://localhost:5173', 'http://localhost:5174'],
+  }),
+)
+app.use(cookieParser())
 app.use(express.json())
 
 app.get('/api/health', async (_request, response) => {
@@ -52,23 +67,54 @@ app.post('/api/auth/google', async (request, response) => {
     })
     const payload = ticket.getPayload()
 
+    if (!payload?.sub || !payload.email || !payload.email_verified) {
+      response.status(401).json({ message: 'Google account email is not verified.' })
+      return
+    }
+
+    const user = await upsertGoogleUser({
+      googleId: payload.sub,
+      email: payload.email,
+      fullName: payload.name || payload.email,
+      picture: payload.picture,
+    })
+    const session = await createSession(user.id)
+
+    setSessionCookie(response, session.token, session.expiresAt)
+
     response.json({
-      user: {
-        email: payload?.email,
-        name: payload?.name,
-        picture: payload?.picture,
-        googleId: payload?.sub,
-      },
+      user,
     })
   } catch {
     response.status(401).json({ message: 'Invalid Google credential.' })
   }
 })
 
-app.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`)
+app.get('/api/auth/me', async (request, response) => {
+  const user = await getSessionUser(request)
+
+  if (!user) {
+    response.status(401).json({ message: 'Not authenticated.' })
+    return
+  }
+
+  response.json({ user })
 })
 
-checkDatabaseConnection()
-  .then(() => console.log('Database connected.'))
-  .catch(() => console.error('Database connection failed.'))
+app.post('/api/auth/logout', async (request, response) => {
+  await deleteSession(request)
+  clearSessionCookie(response)
+  response.status(204).send()
+})
+
+initializeDatabase()
+  .then(() => {
+    app.listen(port, () => {
+      console.log(`Server listening on http://localhost:${port}`)
+      console.log('Database connected.')
+    })
+  })
+  .catch(() => {
+    console.error('Database initialization failed.')
+    process.exit(1)
+  })

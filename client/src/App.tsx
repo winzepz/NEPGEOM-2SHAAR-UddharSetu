@@ -1,26 +1,33 @@
 import { useEffect, useState } from 'react'
-import { GoogleLogin, type CredentialResponse } from '@react-oauth/google'
+import { GoogleLogin, googleLogout, type CredentialResponse } from '@react-oauth/google'
 
 type HealthResponse = {
   status: string
   service: string
+  database?: string
+}
+
+type AuthUser = {
+  id: string
+  email?: string
+  fullName?: string
+  picture?: string
+  googleId?: string
+  role?: string
+  status?: string
 }
 
 type GoogleAuthResponse = {
-  user: {
-    email?: string
-    name?: string
-    picture?: string
-    googleId?: string
-  }
+  user: AuthUser
 }
 
 type AuthMode = 'login' | 'signup'
 
 function App() {
   const [apiStatus, setApiStatus] = useState('Checking API...')
-  const [authMode, setAuthMode] = useState<AuthMode>('login')
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null)
   const [authMessage, setAuthMessage] = useState('')
+  const [user, setUser] = useState<AuthUser | null>(null)
 
   useEffect(() => {
     fetch('/api/health')
@@ -31,8 +38,29 @@ function App() {
 
         return response.json() as Promise<HealthResponse>
       })
-      .then((data) => setApiStatus(`${data.service}: ${data.status}`))
+      .then((data) =>
+        setApiStatus(
+          data.database
+            ? `${data.service}: ${data.status}, database ${data.database}`
+            : `${data.service}: ${data.status}`,
+        ),
+      )
       .catch(() => setApiStatus('API unavailable'))
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/auth/me', {
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Not authenticated')
+        }
+
+        return response.json() as Promise<GoogleAuthResponse>
+      })
+      .then((data) => setUser(data.user))
+      .catch(() => setUser(null))
   }, [])
 
   const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
@@ -44,6 +72,7 @@ function App() {
     try {
       const response = await fetch('/api/auth/google', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -55,64 +84,106 @@ function App() {
       }
 
       const data = (await response.json()) as GoogleAuthResponse
-      const displayName = data.user.name || data.user.email || 'Google user'
+      const displayName = data.user.fullName || data.user.email || 'Google user'
 
+      setUser(data.user)
       setAuthMessage(
         authMode === 'login'
           ? `Welcome back, ${displayName}.`
           : `Account verified for ${displayName}.`,
       )
+      setAuthMode(null)
     } catch {
       setAuthMessage('Google sign-in worked, but server verification failed.')
     }
   }
 
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => undefined)
+    googleLogout()
+    setUser(null)
+    setAuthMode(null)
+    setAuthMessage('')
+  }
+
+  const openAuth = (mode: AuthMode) => {
+    setAuthMode(mode)
+    setAuthMessage('')
+  }
+
   return (
     <main className="app-shell">
-      <section className="auth-layout" aria-labelledby="auth-title">
-        <div className="auth-copy">
+      <header className="topbar">
+        <span className="brand">UddharSetu</span>
+        {user ? (
+          <div className="user-menu" aria-label="Authenticated user">
+            <span className="user-id">User ID: {user.id}</span>
+            <button className="ghost-button" type="button" onClick={handleLogout}>
+              Logout
+            </button>
+          </div>
+        ) : (
+          <nav className="auth-actions" aria-label="Authentication">
+            <button className="ghost-button" type="button" onClick={() => openAuth('login')}>
+              Login
+            </button>
+            <button className="primary-button compact" type="button" onClick={() => openAuth('signup')}>
+              Sign up
+            </button>
+          </nav>
+        )}
+      </header>
+
+      <section className="landing-layout" aria-labelledby="landing-title">
+        <div className="landing-copy">
           <p className="eyebrow">UddharSetu</p>
-          <h1 id="auth-title">Verified disaster relief starts with trusted access.</h1>
+          <h1 id="landing-title">Verified disaster relief, from local need to trusted giving.</h1>
           <p className="lead">
-            Sign in with Google to build donor, social worker, and request
-            verification workflows on top of this starter app.
+            Connect victims, social workers, and donors through requests that can
+            be checked before help is sent.
           </p>
+          {!user && (
+            <div className="cta-row">
+              <button className="primary-button" type="button" onClick={() => openAuth('signup')}>
+                Sign up with Google
+              </button>
+              <button className="secondary-button" type="button" onClick={() => openAuth('login')}>
+                Login
+              </button>
+            </div>
+          )}
           <div className="status-row" aria-live="polite">
             <span className="status-dot" />
             <span>{apiStatus}</span>
           </div>
         </div>
 
-        <div className="auth-panel">
-          <div className="mode-switch" aria-label="Authentication mode">
-            <button
-              className={authMode === 'login' ? 'active' : ''}
-              type="button"
-              onClick={() => {
-                setAuthMode('login')
-                setAuthMessage('')
-              }}
-            >
-              Login
-            </button>
-            <button
-              className={authMode === 'signup' ? 'active' : ''}
-              type="button"
-              onClick={() => {
-                setAuthMode('signup')
-                setAuthMessage('')
-              }}
-            >
-              Sign up
-            </button>
+        <aside className="relief-panel" aria-label="Platform highlights">
+          <div>
+            <span className="metric">24h</span>
+            <p>Urgent needs can be posted and reviewed quickly.</p>
           </div>
+          <div>
+            <span className="metric">3 roles</span>
+            <p>Victims, social workers, and donors share one verified flow.</p>
+          </div>
+          <div>
+            <span className="metric">Google</span>
+            <p>Login is verified by the API and saved in your user database.</p>
+          </div>
+        </aside>
+      </section>
 
-          <h2>{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
-          <p className="panel-copy">
-            {authMode === 'login'
-              ? 'Continue with your Google account to access UddharSetu.'
-              : 'Use your Google account to create an UddharSetu profile.'}
-          </p>
+      {authMode && !user && (
+        <section className="auth-panel" aria-labelledby="auth-title">
+          <button className="close-button" type="button" onClick={() => setAuthMode(null)} aria-label="Close auth panel">
+            x
+          </button>
+          <h2 id="auth-title">{authMode === 'login' ? 'Welcome back' : 'Create your account'}</h2>
+          <p className="panel-copy">Continue securely with your Google account.</p>
 
           <div className="google-button-wrap">
             <GoogleLogin
@@ -125,13 +196,18 @@ function App() {
             />
           </div>
 
-          {authMessage && (
-            <p className="auth-message" role="status">
-              {authMessage}
-            </p>
-          )}
-        </div>
-      </section>
+          <p className="auth-note">
+            Your Google token is verified by the Express API. The app receives
+            only your saved user profile.
+          </p>
+        </section>
+      )}
+
+      {authMessage && (
+        <p className="auth-message" role="status">
+          {authMessage}
+        </p>
+      )}
     </main>
   )
 }
