@@ -2,6 +2,7 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
 import { OAuth2Client } from 'google-auth-library'
+import { checkDatabaseConnection } from './db.js'
 
 dotenv.config()
 
@@ -13,11 +14,22 @@ const googleClient = new OAuth2Client(googleClientId)
 app.use(cors())
 app.use(express.json())
 
-app.get('/api/health', (_request, response) => {
-  response.json({
-    status: 'ok',
-    service: 'UddharSetu API',
-  })
+app.get('/api/health', async (_request, response) => {
+  try {
+    await checkDatabaseConnection()
+
+    response.json({
+      status: 'ok',
+      service: 'UddharSetu API',
+      database: 'connected',
+    })
+  } catch {
+    response.status(503).json({
+      status: 'degraded',
+      service: 'UddharSetu API',
+      database: 'unavailable',
+    })
+  }
 })
 
 app.post('/api/auth/google', async (request, response) => {
@@ -56,3 +68,7 @@ app.post('/api/auth/google', async (request, response) => {
 app.listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`)
 })
+
+checkDatabaseConnection()
+  .then(() => console.log('Database connected.'))
+  .catch(() => console.error('Database connection failed.'))
