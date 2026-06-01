@@ -64,6 +64,8 @@ export type ReliefPost = {
   targetAmount: number | null
   fulfilledQuantity: number
   fulfilledAmount: number
+  imageUrl: string
+  imagePublicId: string | null
   authorityDocumentUrl: string
   authorityDocumentPublicId: string | null
   reviewStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
@@ -100,7 +102,7 @@ export type KycSubmissionsResponse = {
 }
 
 export type AuthMode = 'login'
-export type Page = 'home' | 'requests' | 'campaigns' | 'worker' | 'kyc' | 'admin' | 'profile'
+export type Page = 'home' | 'requests' | 'campaigns' | 'worker' | 'kyc' | 'admin' | 'profile' | 'detail'
 
 export type RequestForm = {
   postType: 'HELP' | 'FUNDRAISING'
@@ -110,6 +112,8 @@ export type RequestForm = {
   urgency: string
   latitude: string
   longitude: string
+  imageUrl: string
+  imagePublicId: string
   authorityDocumentUrl: string
   authorityDocumentPublicId: string
   beneficiaryName: string

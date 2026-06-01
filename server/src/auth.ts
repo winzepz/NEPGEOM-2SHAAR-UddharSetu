@@ -56,16 +56,23 @@ export async function upsertGoogleUser(input: {
       values ($1, $2, $3, $4, now())
       on conflict (email)
       do update set
-        google_id = excluded.google_id,
-        email = excluded.email,
+        google_id = coalesce(users.google_id, excluded.google_id),
         full_name = excluded.full_name,
         picture = excluded.picture,
         last_login_at = now(),
         updated_at = now()
+      where users.google_id is null or users.google_id = excluded.google_id
       returning id, google_id, email, full_name, picture, role, status
     `,
     [input.googleId, input.email, input.fullName, input.picture ?? null],
   )
+
+  // If the email exists but is bound to a different Google account, the
+  // conditional update is skipped and no row is returned — reject the sign-in
+  // rather than silently hijacking the existing account.
+  if (!result.rows[0]) {
+    throw new Error('This email is already linked to a different Google account.')
+  }
 
   return toPublicUser(result.rows[0])
 }

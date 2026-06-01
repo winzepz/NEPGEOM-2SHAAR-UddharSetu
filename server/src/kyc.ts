@@ -90,6 +90,15 @@ export function parseReviewInput(body: unknown) {
 }
 
 export async function submitKyc(userId: string, input: KycInput) {
+  // Block a second submission while one is already awaiting review.
+  const pending = await db.query<{ id: string }>(
+    `select id from kyc_submissions where user_id = $1 and status = 'PENDING' limit 1`,
+    [userId],
+  )
+  if (pending.rows[0]) {
+    throw new Error('You already have a KYC submission awaiting review.')
+  }
+
   const result = await db.query<KycRow>(
     `
       insert into kyc_submissions (
@@ -180,48 +189,59 @@ export async function listKycSubmissions(status?: KycStatus) {
 }
 
 export async function reviewKycSubmission(id: string, reviewerId: string, status: 'APPROVED' | 'REJECTED', adminNotes: string | null) {
-  const result = await db.query<KycRow>(
-    `
-      update kyc_submissions
-      set status = $2,
-          admin_notes = $3,
-          reviewed_by = $4,
-          reviewed_at = now(),
-          updated_at = now()
-      where id = $1
-      returning
-        id,
-        user_id,
-        ''::text as user_name,
-        ''::text as user_email,
-        legal_name,
-        date_of_birth::text,
-        government_id_number,
-        photo_url,
-        photo_public_id,
-        phone_number,
-        government_document_url,
-        government_document_public_id,
-        status,
-        admin_notes,
-        created_at,
-        updated_at
-    `,
-    [id, status, adminNotes, reviewerId],
-  )
+  await db.query('BEGIN')
+  try {
+    // Only a PENDING submission can be reviewed — prevents flipping an
+    // already-decided record (and re-overwriting the user's status).
+    const result = await db.query<KycRow>(
+      `
+        update kyc_submissions
+        set status = $2,
+            admin_notes = $3,
+            reviewed_by = $4,
+            reviewed_at = now(),
+            updated_at = now()
+        where id = $1 and status = 'PENDING'
+        returning
+          id,
+          user_id,
+          ''::text as user_name,
+          ''::text as user_email,
+          legal_name,
+          date_of_birth::text,
+          government_id_number,
+          photo_url,
+          photo_public_id,
+          phone_number,
+          government_document_url,
+          government_document_public_id,
+          status,
+          admin_notes,
+          created_at,
+          updated_at
+      `,
+      [id, status, adminNotes, reviewerId],
+    )
 
-  const submission = result.rows[0]
+    const submission = result.rows[0]
 
-  if (!submission) {
-    return null
+    if (!submission) {
+      // Either the id doesn't exist or it was already reviewed.
+      await db.query('ROLLBACK')
+      return null
+    }
+
+    await db.query('update users set status = $1, updated_at = now() where id = $2', [
+      status,
+      submission.user_id,
+    ])
+
+    await db.query('COMMIT')
+    return toKycSubmission(submission)
+  } catch (error) {
+    await db.query('ROLLBACK')
+    throw error
   }
-
-  await db.query('update users set status = $1, updated_at = now() where id = $2', [
-    status,
-    submission.user_id,
-  ])
-
-  return toKycSubmission(submission)
 }
 
 export async function getLatestUserKyc(userId: string) {

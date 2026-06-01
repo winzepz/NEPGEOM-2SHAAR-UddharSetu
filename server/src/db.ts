@@ -97,6 +97,13 @@ export async function initializeDatabase() {
     alter table help_requests
       add column if not exists local_auth_doc_public_id text;
 
+    alter table help_requests
+      drop constraint if exists help_requests_category_check;
+
+    alter table help_requests
+      add constraint help_requests_category_check
+      check (category in ('FOOD', 'CLOTHES', 'VOLUNTEER', 'MONEY', 'OTHER'));
+
     create table if not exists kyc_submissions (
       id uuid primary key default gen_random_uuid(),
       user_id uuid not null references users(id) on delete cascade,
@@ -127,7 +134,7 @@ export async function initializeDatabase() {
       title text not null,
       description text not null,
       category text not null
-        check (category in ('FOOD', 'CLOTHES', 'VOLUNTEER', 'MONEY', 'OTHER')),
+        check (category in ('FOOD', 'CLOTHES', 'VOLUNTEER', 'MONEY', 'MEDICAL', 'SUPPLY', 'OTHER')),
       urgency text not null default 'MEDIUM'
         check (urgency in ('CRITICAL', 'HIGH', 'MEDIUM')),
       latitude double precision not null,
@@ -140,6 +147,8 @@ export async function initializeDatabase() {
       local_representative_phone text not null,
       target_quantity integer check (target_quantity is null or target_quantity > 0),
       target_amount numeric(12, 2) check (target_amount is null or target_amount > 0),
+      image_url text,
+      image_public_id text,
       authority_document_url text not null,
       authority_document_public_id text,
       review_status text not null default 'PENDING'
@@ -165,6 +174,19 @@ export async function initializeDatabase() {
     alter table relief_posts
       add column if not exists fulfilled_amount numeric(12, 2) not null default 0;
 
+    alter table relief_posts
+      add column if not exists image_url text;
+
+    alter table relief_posts
+      add column if not exists image_public_id text;
+
+    alter table relief_posts
+      drop constraint if exists relief_posts_category_check;
+
+    alter table relief_posts
+      add constraint relief_posts_category_check
+      check (category in ('FOOD', 'CLOTHES', 'VOLUNTEER', 'MONEY', 'MEDICAL', 'SUPPLY', 'OTHER'));
+
     create table if not exists relief_pledges (
       id uuid primary key default gen_random_uuid(),
       post_id uuid not null references relief_posts(id) on delete cascade,
@@ -175,7 +197,6 @@ export async function initializeDatabase() {
       donor_phone text not null,
       secure_token text unique not null,
       status text not null default 'PLEDGED' check (status in ('PLEDGED', 'COMPLETED', 'EXPIRED', 'CANCELLED')),
-      hub_name text,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );

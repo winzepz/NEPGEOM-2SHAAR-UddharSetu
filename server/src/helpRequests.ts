@@ -26,7 +26,7 @@ export type HelpRequest = {
   id: string
   title: string
   description: string
-  category: 'FOOD' | 'CLOTHES' | 'VOLUNTEER' | 'MONEY' | 'OTHER'
+  category: 'FOOD' | 'CLOTHES' | 'VOLUNTEER' | 'OTHER'
   urgency: 'CRITICAL' | 'HIGH' | 'MEDIUM'
   latitude: number
   longitude: number
@@ -173,7 +173,7 @@ export function parseHelpRequestInput(body: unknown): CreateHelpRequestInput {
   }
 
   const data = body as Record<string, unknown>
-  const category = parseOption(data.category, ['FOOD', 'CLOTHES', 'VOLUNTEER', 'MONEY', 'OTHER'])
+  const category = parseOption(data.category, ['FOOD', 'CLOTHES', 'VOLUNTEER', 'OTHER'])
   const urgency = parseOption(data.urgency, ['CRITICAL', 'HIGH', 'MEDIUM'])
 
   return {

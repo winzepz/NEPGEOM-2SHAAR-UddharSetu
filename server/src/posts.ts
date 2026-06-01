@@ -11,8 +11,11 @@ import {
 
 type PostType = 'HELP' | 'FUNDRAISING'
 type PostStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
-type Category = 'FOOD' | 'CLOTHES' | 'VOLUNTEER' | 'MONEY' | 'OTHER'
+type Category = 'FOOD' | 'CLOTHES' | 'VOLUNTEER' | 'MONEY' | 'MEDICAL' | 'SUPPLY' | 'OTHER'
 type Urgency = 'CRITICAL' | 'HIGH' | 'MEDIUM'
+
+const helpCategories = ['FOOD', 'CLOTHES', 'VOLUNTEER', 'OTHER'] as const
+const fundraiserCategories = ['MEDICAL', 'SUPPLY', 'OTHER'] as const
 
 type PostRow = {
   id: string
@@ -33,6 +36,10 @@ type PostRow = {
   local_representative_phone: string
   target_quantity: number | null
   target_amount: string | null
+  fulfilled_quantity: number
+  fulfilled_amount: string | null
+  image_url: string | null
+  image_public_id: string | null
   authority_document_url: string
   authority_document_public_id: string | null
   review_status: PostStatus
@@ -60,6 +67,10 @@ export type ReliefPost = {
   localRepresentativePhone: string
   targetQuantity: number | null
   targetAmount: number | null
+  fulfilledQuantity: number
+  fulfilledAmount: number
+  imageUrl: string
+  imagePublicId: string | null
   authorityDocumentUrl: string
   authorityDocumentPublicId: string | null
   reviewStatus: PostStatus
@@ -75,12 +86,16 @@ export function parsePostInput(body: unknown) {
 
   const data = body as Record<string, unknown>
   const postType = parseOption(data.postType, ['HELP', 'FUNDRAISING'], 'postType')
+  const category =
+    postType === 'HELP'
+      ? parseOption(data.category, helpCategories, 'category')
+      : parseOption(data.category, fundraiserCategories, 'category')
 
   return {
     postType,
     title: parseString(data.title, 'title'),
     description: parseString(data.description, 'description'),
-    category: parseOption(data.category, ['FOOD', 'CLOTHES', 'VOLUNTEER', 'MONEY', 'OTHER'], 'category'),
+    category,
     urgency: parseOption(data.urgency, ['CRITICAL', 'HIGH', 'MEDIUM'], 'urgency'),
     latitude: parseNumber(data.latitude, 'latitude'),
     longitude: parseNumber(data.longitude, 'longitude'),
@@ -92,6 +107,8 @@ export function parsePostInput(body: unknown) {
     localRepresentativePhone: parseString(data.localRepresentativePhone, 'localRepresentativePhone'),
     targetQuantity: postType === 'HELP' ? parsePositiveInteger(data.targetQuantity, 'targetQuantity') : null,
     targetAmount: postType === 'FUNDRAISING' ? parsePositiveNumber(data.targetAmount, 'targetAmount') : null,
+    imageUrl: parseString(data.imageUrl, 'imageUrl'),
+    imagePublicId: parseOptionalString(data.imagePublicId),
     authorityDocumentUrl: parseString(data.authorityDocumentUrl, 'authorityDocumentUrl'),
     authorityDocumentPublicId: parseOptionalString(data.authorityDocumentPublicId),
   }
@@ -117,14 +134,16 @@ export async function createReliefPost(input: ReturnType<typeof parsePostInput>,
         local_representative_phone,
         target_quantity,
         target_amount,
+        image_url,
+        image_public_id,
         authority_document_url,
         authority_document_public_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       returning
         id,
         author_id,
-        $19::text as author_name,
+        $21::text as author_name,
         post_type,
         title,
         description,
@@ -140,6 +159,10 @@ export async function createReliefPost(input: ReturnType<typeof parsePostInput>,
         local_representative_phone,
         target_quantity,
         target_amount::text,
+        fulfilled_quantity,
+        fulfilled_amount::text,
+        image_url,
+        image_public_id,
         authority_document_url,
         authority_document_public_id,
         review_status,
@@ -164,6 +187,8 @@ export async function createReliefPost(input: ReturnType<typeof parsePostInput>,
       input.localRepresentativePhone,
       input.targetQuantity,
       input.targetAmount,
+      input.imageUrl,
+      input.imagePublicId,
       input.authorityDocumentUrl,
       input.authorityDocumentPublicId,
       user.fullName,
@@ -194,7 +219,7 @@ export async function reviewPost(id: string, reviewerId: string, status: 'APPROV
           reviewed_by = $4,
           reviewed_at = now(),
           updated_at = now()
-      where id = $1
+      where id = $1 and review_status = 'PENDING'
       returning
         id,
         author_id,
@@ -214,6 +239,10 @@ export async function reviewPost(id: string, reviewerId: string, status: 'APPROV
         local_representative_phone,
         target_quantity,
         target_amount::text,
+        fulfilled_quantity,
+        fulfilled_amount::text,
+        image_url,
+        image_public_id,
         authority_document_url,
         authority_document_public_id,
         review_status,
@@ -249,6 +278,10 @@ async function listPosts(whereClause: string, params: unknown[] = []) {
         p.local_representative_phone,
         p.target_quantity,
         p.target_amount::text,
+        p.fulfilled_quantity,
+        p.fulfilled_amount::text,
+        p.image_url,
+        p.image_public_id,
         p.authority_document_url,
         p.authority_document_public_id,
         p.review_status,
@@ -287,6 +320,10 @@ function toReliefPost(row: PostRow): ReliefPost {
     localRepresentativePhone: row.local_representative_phone,
     targetQuantity: row.target_quantity,
     targetAmount: row.target_amount ? Number(row.target_amount) : null,
+    fulfilledQuantity: row.fulfilled_quantity ?? 0,
+    fulfilledAmount: row.fulfilled_amount ? Number(row.fulfilled_amount) : 0,
+    imageUrl: row.image_url ?? '',
+    imagePublicId: row.image_public_id,
     authorityDocumentUrl: row.authority_document_url,
     authorityDocumentPublicId: row.authority_document_public_id,
     reviewStatus: row.review_status,

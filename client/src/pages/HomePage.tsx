@@ -6,25 +6,24 @@ import {
   HandHeart,
   Landmark,
   MapPin,
-  Package,
-  ShieldAlert,
-  ShieldCheck,
   Users,
 } from 'lucide-react'
 import type { AuthUser, Page, ReliefPost } from '../types/app'
 import { FeatureCard } from '../components/FeatureCard'
 import { RequestList } from '../components/RequestList'
+import heroImage from '../assets/Landingpageimage.jpg'
+import heroVideo from '../assets/LANDING VIDEO.webm'
 
 type HomePageProps = {
-  apiStatus: string
   publicRequests: ReliefPost[]
   user: AuthUser | null
   onLogin: () => void
   onNavigate: (page: Page) => void
   onActionSuccess?: () => void
+  onOpenPost?: (post: ReliefPost) => void
 }
 
-export function HomePage({ apiStatus, publicRequests, user, onLogin, onNavigate, onActionSuccess }: HomePageProps) {
+export function HomePage({ publicRequests, user, onLogin, onNavigate, onActionSuccess, onOpenPost }: HomePageProps) {
   const fundraisingCount = publicRequests.filter((r) => r.postType === 'FUNDRAISING').length
   const helpCount = publicRequests.filter((r) => r.postType === 'HELP').length
 
@@ -41,7 +40,7 @@ export function HomePage({ apiStatus, publicRequests, user, onLogin, onNavigate,
     : user.role === 'SUPER_ADMIN'
       ? 'Open admin panel'
       : user.status === 'APPROVED'
-        ? 'Open worker console'
+        ? 'Go to Dashboard'
         : 'Complete KYC'
 
   return (
@@ -50,10 +49,6 @@ export function HomePage({ apiStatus, publicRequests, user, onLogin, onNavigate,
       {/* ── HERO ── */}
       <div className="home-hero">
         <div className="home-hero-inner">
-          <p className="eyebrow home-hero-eyebrow">
-            <ShieldCheck size={15} />
-            Verified disaster relief network
-          </p>
           <h1 className="home-hero-headline">
             Real needs.<br />
             Verified help.<br />
@@ -95,85 +90,38 @@ export function HomePage({ apiStatus, publicRequests, user, onLogin, onNavigate,
             </div>
           </div>
         </div>
-        <div className="home-hero-visual" aria-hidden="true">
-          <div className="hero-panel">
+        <div className="home-hero-visual">
+          <video
+            className="hero-photo"
+            src={heroVideo}
+            poster={heroImage}
+            autoPlay
+            muted
+            loop
+            playsInline
+            aria-label="Disaster relief and community support"
+            onError={(e) => {
+              e.currentTarget.classList.add('hero-photo--failed')
+            }}
+          >
+            <img src={heroImage} alt="Disaster relief and community support" />
+          </video>
+          <div className="hero-photo-overlay" />
 
-            {/* Panel header */}
-            <div className="hero-panel-header">
-              <div className="hero-panel-live">
-                <span className="hero-live-dot" />
-                Live board
-              </div>
-              <span className="hero-panel-verified">
-                <BadgeCheck size={12} />
-                Admin verified
+          {/* Floating campaign card */}
+          <div className="hero-photo-card">
+            <div className="hero-photo-card-head">
+              <span className="hero-mini-type">
+                <CircleDollarSign size={11} />
+                Fundraiser
               </span>
+              <span className="hero-mini-pct hero-mini-pct--fund">62%</span>
             </div>
-
-            {/* Fundraiser campaign */}
-            <div className="hero-mini-card">
-              <div className="hero-mini-top">
-                <span className="hero-mini-type">
-                  <CircleDollarSign size={10} />
-                  Fundraiser
-                </span>
-                <span className="hero-mini-pct hero-mini-pct--fund">62%</span>
-              </div>
-              <div className="hero-mini-title">Flood Relief — Sindhupalchok</div>
-              <div className="hero-mini-bar">
-                <span className="hero-mini-fill--fund" style={{ width: '62%' }} />
-              </div>
-              <div className="hero-mini-sub">Rs. 62,000 of Rs. 1,00,000 raised</div>
+            <div className="hero-photo-card-title">Flood Relief — Sindhupalchok</div>
+            <div className="hero-mini-bar">
+              <span className="hero-mini-fill--fund" style={{ width: '62%' }} />
             </div>
-
-            {/* Material help campaign */}
-            <div className="hero-mini-card">
-              <div className="hero-mini-top">
-                <span className="hero-mini-type hero-mini-type--help">
-                  <Package size={10} />
-                  Material Help
-                </span>
-                <span className="hero-mini-pct hero-mini-pct--help">38%</span>
-              </div>
-              <div className="hero-mini-title">Food &amp; Clothing — Kavre</div>
-              <div className="hero-mini-bar">
-                <span className="hero-mini-fill--help" style={{ width: '38%' }} />
-              </div>
-              <div className="hero-mini-sub">145 of 380 units fulfilled</div>
-            </div>
-
-            {/* Critical urgent */}
-            <div className="hero-mini-card">
-              <div className="hero-mini-top">
-                <span className="hero-mini-type hero-mini-type--urgent">
-                  <ShieldAlert size={10} />
-                  Critical
-                </span>
-                <span className="hero-mini-pct hero-mini-pct--urgent">12%</span>
-              </div>
-              <div className="hero-mini-title">Emergency Shelter — Dolakha</div>
-              <div className="hero-mini-bar">
-                <span className="hero-mini-fill--urgent" style={{ width: '12%' }} />
-              </div>
-              <div className="hero-mini-sub">48 of 400 units · needs urgent help</div>
-            </div>
-
-            {/* Trust badges */}
-            <div className="hero-trust-row">
-              <div className="hero-trust-badge">
-                <BadgeCheck size={12} />
-                KYC Gate
-              </div>
-              <div className="hero-trust-badge">
-                <ClipboardCheck size={12} />
-                Admin Review
-              </div>
-              <div className="hero-trust-badge hero-trust-badge--live">
-                <HandHeart size={12} />
-                Live &amp; Verified
-              </div>
-            </div>
-
+            <div className="hero-photo-card-sub">Rs. 62,000 raised of Rs. 1,00,000 goal</div>
           </div>
         </div>
       </div>
@@ -240,17 +188,10 @@ export function HomePage({ apiStatus, publicRequests, user, onLogin, onNavigate,
             </button>
           </div>
         </div>
-        <RequestList title="" requests={publicRequests.slice(0, 4)} onActionSuccess={onActionSuccess} />
+        <RequestList title="" requests={publicRequests.slice(0, 4)} onActionSuccess={onActionSuccess} onOpenPost={onOpenPost} />
       </div>
 
       {/* ── STATUS ── */}
-      <div className="home-status-row">
-        <div className="status-row">
-          <span className="status-dot" />
-          <span>{apiStatus}</span>
-        </div>
-      </div>
-
     </section>
   )
 }

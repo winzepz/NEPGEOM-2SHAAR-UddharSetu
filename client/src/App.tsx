@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { googleLogout, type CredentialResponse } from '@react-oauth/google'
 import { AuthPanel } from './components/AuthPanel'
+import { Footer } from './components/Footer'
 import { Topbar } from './components/Topbar'
 import { initialKycForm, initialRequestForm } from './constants/forms'
 import { AdminPage } from './pages/AdminPage'
 import { CampaignsPage } from './pages/CampaignsPage'
 import { HomePage } from './pages/HomePage'
 import { KycPage } from './pages/KycPage'
+import { PostDetailPage } from './pages/PostDetailPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { RequestsPage } from './pages/RequestsPage'
 import { WorkerPage } from './pages/WorkerPage'
@@ -15,7 +17,6 @@ import type {
   AuthMode,
   AuthUser,
   GoogleAuthResponse,
-  HealthResponse,
   KycSubmission,
   KycSubmissionsResponse,
   KycForm,
@@ -25,8 +26,26 @@ import type {
   RequestForm,
 } from './types/app'
 
+type ViewerLocation = {
+  latitude: number
+  longitude: number
+}
+
+function getDistanceKm(from: ViewerLocation, post: ReliefPost) {
+  const earthRadiusKm = 6371
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180
+  const lat1 = toRadians(from.latitude)
+  const lat2 = toRadians(post.latitude)
+  const deltaLat = toRadians(post.latitude - from.latitude)
+  const deltaLng = toRadians(post.longitude - from.longitude)
+  const a =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2)
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 function App() {
-  const [apiStatus, setApiStatus] = useState('Checking platform status...')
   const [authMode, setAuthMode] = useState<AuthMode | null>(null)
   const [authMessage, setAuthMessage] = useState('')
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -41,6 +60,7 @@ function App() {
   const [formMessage, setFormMessage] = useState('')
   const [kycMessage, setKycMessage] = useState('')
   const [uploadMessages, setUploadMessages] = useState({
+    requestImage: '',
     request: '',
     kycPhoto: '',
     kycDocument: '',
@@ -48,8 +68,40 @@ function App() {
   const [kycSubmitted, setKycSubmitted] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
+  const [detailReturnPage, setDetailReturnPage] = useState<Page>('home')
+  const [viewerLocation, setViewerLocation] = useState<ViewerLocation | null>(null)
   const isApproved = user?.status === 'APPROVED'
   const isAdmin = user?.role === 'SUPER_ADMIN'
+
+  const nearestPublicRequests = useMemo(() => {
+    if (!viewerLocation) {
+      return publicRequests
+    }
+
+    return publicRequests
+      .map((post, index) => ({
+        post,
+        index,
+        distance: getDistanceKm(viewerLocation, post),
+      }))
+      .sort((a, b) => a.distance - b.distance || a.index - b.index)
+      .map(({ post }) => post)
+  }, [publicRequests, viewerLocation])
+
+  // Re-derive the detail post from live data so progress stays fresh after a donation refresh
+  const detailPost = useMemo(
+    () => [...publicRequests, ...myRequests].find((p) => p.id === selectedPostId) ?? null,
+    [publicRequests, myRequests, selectedPostId],
+  )
+
+  const openPost = (post: ReliefPost) => {
+    setSelectedPostId(post.id)
+    setDetailReturnPage(page === 'detail' ? detailReturnPage : page)
+    setPage('detail')
+    setIsMenuOpen(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   const myOpenRequests = useMemo(
     () => myRequests.filter((request) => request.reviewStatus === 'APPROVED').length,
@@ -70,18 +122,18 @@ function App() {
 
   useEffect(() => {
     document.documentElement.style.scrollBehavior = 'smooth'
-    fetch('/api/health')
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('API request failed')
-        }
-
-        return response.json() as Promise<HealthResponse>
-      })
-      .then(() => setApiStatus('Platform services are online.'))
-      .catch(() => setApiStatus('Platform status is temporarily unavailable.'))
-
     loadPublicPosts()
+
+    navigator.geolocation?.getCurrentPosition(
+      (position) => {
+        setViewerLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        })
+      },
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 300000, timeout: 10000 },
+    )
 
     // Handle Khalti payment callback
     const params = new URLSearchParams(window.location.search)
@@ -233,6 +285,8 @@ function App() {
           ...requestForm,
           latitude: Number(requestForm.latitude),
           longitude: Number(requestForm.longitude),
+          imageUrl: requestForm.imageUrl,
+          imagePublicId: requestForm.imagePublicId,
           targetQuantity: Number(requestForm.targetQuantity),
           targetAmount: Number(requestForm.targetAmount),
         }),
@@ -245,7 +299,7 @@ function App() {
       }
 
       setRequestForm(initialRequestForm)
-      setUploadMessages((currentMessages) => ({ ...currentMessages, request: '' }))
+      setUploadMessages((currentMessages) => ({ ...currentMessages, request: '', requestImage: '' }))
       setFormMessage('Your post was submitted for review.')
       await Promise.all([loadMyPosts(), loadPublicPosts()])
     } catch (error) {
@@ -281,12 +335,16 @@ function App() {
     }
   }
 
-  const handleDocumentUpload = async (file: File | undefined, target: 'request' | 'kyc-photo' | 'kyc-document') => {
+  const handleDocumentUpload = async (
+    file: File | undefined,
+    target: 'request-image' | 'request' | 'kyc-photo' | 'kyc-document',
+  ) => {
     if (!file) {
       return
     }
 
-    const messageKey = target === 'request' ? 'request' : target === 'kyc-photo' ? 'kycPhoto' : 'kycDocument'
+    const messageKey =
+      target === 'request-image' ? 'requestImage' : target === 'request' ? 'request' : target === 'kyc-photo' ? 'kycPhoto' : 'kycDocument'
     setUploadMessages((currentMessages) => ({ ...currentMessages, [messageKey]: '' }))
     setIsUploading(true)
 
@@ -297,7 +355,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ purpose: target === 'request' ? 'post' : 'kyc' }),
+        body: JSON.stringify({ purpose: target === 'request-image' ? 'post-images' : target === 'request' ? 'post-documents' : 'kyc' }),
       })
       const signatureData = await signatureResponse.json()
 
@@ -322,7 +380,13 @@ function App() {
         throw new Error(uploadData.error?.message || 'Upload failed. Please try again.')
       }
 
-      if (target === 'request') {
+      if (target === 'request-image') {
+        setRequestForm((currentForm) => ({
+          ...currentForm,
+          imageUrl: uploadData.secure_url,
+          imagePublicId: uploadData.public_id,
+        }))
+      } else if (target === 'request') {
         setRequestForm((currentForm) => ({
           ...currentForm,
           authorityDocumentUrl: uploadData.secure_url,
@@ -349,6 +413,8 @@ function App() {
             ? 'Profile photo uploaded successfully.'
             : target === 'kyc-document'
               ? 'Government document uploaded successfully.'
+              : target === 'request-image'
+                ? 'Post image uploaded successfully.'
               : 'Authority document uploaded successfully.',
       }))
     } catch (error) {
@@ -476,27 +542,36 @@ function App() {
 
       {page === 'home' && (
         <HomePage
-          apiStatus={apiStatus}
-          publicRequests={publicRequests}
+          publicRequests={nearestPublicRequests}
           user={user}
           onLogin={() => openAuth('login')}
           onNavigate={goToPage}
           onActionSuccess={loadPublicPosts}
+          onOpenPost={openPost}
         />
       )}
 
       {page === 'requests' && (
         <RequestsPage
-          publicRequests={publicRequests}
+          publicRequests={nearestPublicRequests}
           onLogin={() => openAuth('login')}
           onNavigate={goToPage}
           onActionSuccess={loadPublicPosts}
+          onOpenPost={openPost}
         />
       )}
       {page === 'campaigns' && (
         <CampaignsPage
-          publicRequests={publicRequests}
+          publicRequests={nearestPublicRequests}
           onNavigate={goToPage}
+          onActionSuccess={loadPublicPosts}
+          onOpenPost={openPost}
+        />
+      )}
+      {page === 'detail' && (
+        <PostDetailPage
+          post={detailPost}
+          onBack={() => goToPage(detailReturnPage)}
           onActionSuccess={loadPublicPosts}
         />
       )}
@@ -510,8 +585,10 @@ function App() {
           requestForm={requestForm}
           setRequestForm={setRequestForm}
           uploadMessage={uploadMessages.request}
+          imageUploadMessage={uploadMessages.requestImage}
           user={user}
           onCreateRequest={handleCreateRequest}
+          onImageUpload={(file) => handleDocumentUpload(file, 'request-image')}
           onDocumentUpload={(file) => handleDocumentUpload(file, 'request')}
           onLogin={() => openAuth('login')}
           onKyc={() => goToPage('kyc')}
@@ -565,6 +642,8 @@ function App() {
           {authMessage}
         </p>
       )}
+
+      <Footer onNavigate={goToPage} />
     </main>
   )
 }

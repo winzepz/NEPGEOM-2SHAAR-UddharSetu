@@ -1,7 +1,6 @@
 import crypto from 'node:crypto'
 import type { Request, Response } from 'express'
 import { db } from './db.js'
-import { getSessionUser } from './auth.js'
 import {
   parseString,
   parsePositiveInteger,
@@ -19,13 +18,11 @@ type PledgeRow = {
   donor_phone: string
   secure_token: string
   status: 'PLEDGED' | 'COMPLETED' | 'EXPIRED' | 'CANCELLED'
-  hub_name: string | null
   created_at: Date
   updated_at: Date
 }
 
-// Generate secure drop-off token
-function generateDropoffToken(): string {
+function generatePledgeToken(): string {
   return 'US-' + crypto.randomBytes(3).toString('hex').toUpperCase()
 }
 
@@ -230,18 +227,15 @@ export async function verifyPayment(request: Request, response: Response) {
 // Create Material Pledge
 export async function createMaterialPledge(request: Request, response: Response) {
   try {
-    const { postId, quantity, donorPhone, donorName, hubName } = request.body
+    const { postId, quantity, donorPhone, donorName } = request.body
 
     const parsedPostId = parseString(postId, 'postId')
     const parsedQuantity = parsePositiveInteger(quantity, 'quantity')
     const parsedPhone = parseString(donorPhone, 'donorPhone')
     const parsedName = parseOptionalString(donorName) || 'Anonymous Donor'
-    const parsedHub = parseString(hubName, 'hubName')
 
-    // Run transaction to check capacity and insert pledge
     await db.query('BEGIN')
     try {
-      // 1. Lock post row
       const postQuery = await db.query(
         `select id, target_quantity, fulfilled_quantity from relief_posts where id = $1 for update`,
         [parsedPostId]
@@ -255,36 +249,33 @@ export async function createMaterialPledge(request: Request, response: Response)
         throw new Error('Selected relief post does not accept quantity pledges.')
       }
 
-      // 2. Calculate current active pledges (PLEDGED)
-      const activePledgesQuery = await db.query(
-        `select coalesce(sum(quantity), 0) as total_active from relief_pledges where post_id = $1 and status = 'PLEDGED'`,
-        [parsedPostId]
-      )
-      const activePledges = Number(activePledgesQuery.rows[0]?.total_active || 0)
-
-      const remaining = post.target_quantity - (post.fulfilled_quantity + activePledges)
+      const remaining = post.target_quantity - post.fulfilled_quantity
 
       if (parsedQuantity > remaining) {
         throw new Error(`Insufficient capacity. Only ${remaining > 0 ? remaining : 0} items remaining to be pledged.`)
       }
 
-      // 3. Generate token and insert pledge
-      const secureToken = generateDropoffToken()
+      const secureToken = generatePledgeToken()
       const pledgeId = crypto.randomUUID()
 
       const insertResult = await db.query<PledgeRow>(
         `
-          insert into relief_pledges (id, post_id, pledge_type, quantity, donor_name, donor_phone, secure_token, status, hub_name)
-          values ($1, $2, 'MATERIAL', $3, $4, $5, $6, 'PLEDGED', $7)
+          insert into relief_pledges (id, post_id, pledge_type, quantity, donor_name, donor_phone, secure_token, status)
+          values ($1, $2, 'MATERIAL', $3, $4, $5, $6, 'COMPLETED')
           returning *
         `,
-        [pledgeId, parsedPostId, parsedQuantity, parsedName, parsedPhone, secureToken, parsedHub]
+        [pledgeId, parsedPostId, parsedQuantity, parsedName, parsedPhone, secureToken]
+      )
+
+      await db.query(
+        `update relief_posts set fulfilled_quantity = fulfilled_quantity + $1, updated_at = now() where id = $2`,
+        [parsedQuantity, parsedPostId]
       )
 
       await db.query('COMMIT')
 
       response.status(201).json({
-        message: 'Material pledge created successfully.',
+        message: 'Material support pledged successfully.',
         pledge: insertResult.rows[0],
       })
     } catch (transactionError) {
@@ -298,75 +289,3 @@ export async function createMaterialPledge(request: Request, response: Response)
   }
 }
 
-// Complete Material Pledge (Social worker drop-off token confirmation)
-export async function completeMaterialPledge(request: Request, response: Response) {
-  const user = await getSessionUser(request)
-
-  if (!user) {
-    response.status(401).json({ message: 'Not authenticated.' })
-    return
-  }
-
-  if (user.status !== 'APPROVED') {
-    response.status(403).json({ message: 'Social worker account is not approved.' })
-    return
-  }
-
-  try {
-    const { secureToken } = request.body
-    const parsedToken = parseString(secureToken, 'secureToken').toUpperCase()
-
-    // Find and lock the pledge
-    await db.query('BEGIN')
-    try {
-      const pledgeQuery = await db.query<PledgeRow>(
-        `select * from relief_pledges where secure_token = $1 for update`,
-        [parsedToken]
-      )
-      const pledge = pledgeQuery.rows[0]
-      if (!pledge) {
-        throw new Error('Drop-off pledge token not found.')
-      }
-
-      if (pledge.status !== 'PLEDGED') {
-        throw new Error(`Pledge is already ${pledge.status.toLowerCase()}.`)
-      }
-
-      // Lock post
-      const postQuery = await db.query(
-        `select id, target_quantity, fulfilled_quantity from relief_posts where id = $1 for update`,
-        [pledge.post_id]
-      )
-      const post = postQuery.rows[0]
-      if (!post) {
-        throw new Error('Associated post not found.')
-      }
-
-      // Update pledge to completed
-      await db.query(
-        `update relief_pledges set status = 'COMPLETED', updated_at = now() where id = $1`,
-        [pledge.id]
-      )
-
-      // Update post fulfilled quantity
-      const quantity = pledge.quantity || 0
-      await db.query(
-        `update relief_posts set fulfilled_quantity = fulfilled_quantity + $1, updated_at = now() where id = $2`,
-        [quantity, pledge.post_id]
-      )
-
-      await db.query('COMMIT')
-      response.json({
-        message: 'Pledge drop-off verified and marked completed.',
-        pledge: { ...pledge, status: 'COMPLETED' },
-      })
-    } catch (transactionError) {
-      await db.query('ROLLBACK')
-      throw transactionError
-    }
-  } catch (error) {
-    response.status(400).json({
-      message: error instanceof Error ? error.message : 'Could not complete drop-off.',
-    })
-  }
-}

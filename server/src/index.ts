@@ -35,7 +35,6 @@ import {
   initiatePayment,
   verifyPayment,
   createMaterialPledge,
-  completeMaterialPledge,
 } from './donations.js'
 
 const app = express()
@@ -329,7 +328,6 @@ app.get('/api/me/help-requests', async (request, response) => {
 app.post('/api/donations/initiate', initiatePayment)
 app.post('/api/donations/verify', verifyPayment)
 app.post('/api/pledges/material', createMaterialPledge)
-app.post('/api/worker/pledges/complete', completeMaterialPledge)
 
 initializeDatabase()
   .then(() => {

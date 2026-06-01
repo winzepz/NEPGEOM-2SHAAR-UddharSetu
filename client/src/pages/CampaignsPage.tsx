@@ -1,4 +1,4 @@
-import { BadgeCheck, Landmark, Target, TrendingUp } from 'lucide-react'
+import { BadgeCheck, Landmark, Target } from 'lucide-react'
 import type { Page, ReliefPost } from '../types/app'
 import { PageHeader } from '../components/PageHeader'
 import { RequestList } from '../components/RequestList'
@@ -7,9 +7,10 @@ type CampaignsPageProps = {
   publicRequests: ReliefPost[]
   onNavigate?: (page: Page) => void
   onActionSuccess?: () => void
+  onOpenPost?: (post: ReliefPost) => void
 }
 
-export function CampaignsPage({ publicRequests, onNavigate, onActionSuccess }: CampaignsPageProps) {
+export function CampaignsPage({ publicRequests, onNavigate, onActionSuccess, onOpenPost }: CampaignsPageProps) {
   const campaigns = publicRequests.filter((p) => p.postType === 'FUNDRAISING')
   const totalRaised = campaigns.reduce((sum, p) => sum + Number(p.fulfilledAmount ?? 0), 0)
   const withGoal = campaigns.filter((p) => p.targetAmount != null).length
@@ -41,7 +42,6 @@ export function CampaignsPage({ publicRequests, onNavigate, onActionSuccess }: C
         <div className="campaign-overall-progress">
           <div className="campaign-overall-meta">
             <span className="campaign-overall-label">
-              <TrendingUp size={14} />
               Overall campaign progress
             </span>
             <span className="campaign-overall-pct">
@@ -57,7 +57,7 @@ export function CampaignsPage({ publicRequests, onNavigate, onActionSuccess }: C
         </div>
       )}
 
-      <RequestList title="Fundraising campaigns" requests={campaigns} onActionSuccess={onActionSuccess} />
+      <RequestList title="Fundraising campaigns" requests={campaigns} onActionSuccess={onActionSuccess} onOpenPost={onOpenPost} />
 
       {onNavigate && (
         <div className="toolbar" style={{ justifyContent: 'center', marginTop: '8px' }}>

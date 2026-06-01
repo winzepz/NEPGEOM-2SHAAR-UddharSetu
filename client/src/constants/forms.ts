@@ -8,6 +8,8 @@ export const initialRequestForm: RequestForm = {
   urgency: 'MEDIUM',
   latitude: '',
   longitude: '',
+  imageUrl: '',
+  imagePublicId: '',
   authorityDocumentUrl: '',
   authorityDocumentPublicId: '',
   beneficiaryName: '',

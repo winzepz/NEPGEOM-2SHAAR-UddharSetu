@@ -8,10 +8,25 @@ type RequestFormPanelProps = {
   isUploading: boolean
   requestForm: RequestForm
   setRequestForm: (form: RequestForm) => void
+  imageUploadMessage: string
   uploadMessage: string
   onCreateRequest: RequestSubmitHandler
+  onImageUpload: FileUploadHandler
   onDocumentUpload: FileUploadHandler
 }
+
+const helpCategories = [
+  { value: 'FOOD', label: 'Food' },
+  { value: 'CLOTHES', label: 'Clothes' },
+  { value: 'VOLUNTEER', label: 'Volunteer' },
+  { value: 'OTHER', label: 'Other' },
+]
+
+const fundraiserCategories = [
+  { value: 'MEDICAL', label: 'Medical' },
+  { value: 'SUPPLY', label: 'Supply' },
+  { value: 'OTHER', label: 'Other' },
+]
 
 export function RequestFormPanel({
   formMessage,
@@ -19,10 +34,15 @@ export function RequestFormPanel({
   isUploading,
   requestForm,
   setRequestForm,
+  imageUploadMessage,
   uploadMessage,
   onCreateRequest,
+  onImageUpload,
   onDocumentUpload,
 }: RequestFormPanelProps) {
+  const isHelp = requestForm.postType === 'HELP'
+  const categories = isHelp ? helpCategories : fundraiserCategories
+
   return (
     <form className="form-panel" onSubmit={onCreateRequest}>
       <h2>Post details</h2>
@@ -33,7 +53,7 @@ export function RequestFormPanel({
           type="button"
           className={requestForm.postType === 'HELP' ? 'primary-button compact' : 'ghost-button'}
           style={{ flex: 1, border: 0, padding: '8px', minHeight: '36px', boxShadow: requestForm.postType === 'HELP' ? undefined : 'none' }}
-          onClick={() => setRequestForm({ ...requestForm, postType: 'HELP' })}
+          onClick={() => setRequestForm({ ...requestForm, postType: 'HELP', category: 'FOOD', targetAmount: '' })}
         >
           Material Help Request
         </button>
@@ -41,7 +61,7 @@ export function RequestFormPanel({
           type="button"
           className={requestForm.postType === 'FUNDRAISING' ? 'primary-button compact' : 'ghost-button'}
           style={{ flex: 1, border: 0, padding: '8px', minHeight: '36px', boxShadow: requestForm.postType === 'FUNDRAISING' ? undefined : 'none' }}
-          onClick={() => setRequestForm({ ...requestForm, postType: 'FUNDRAISING' })}
+          onClick={() => setRequestForm({ ...requestForm, postType: 'FUNDRAISING', category: 'MEDICAL', targetQuantity: '1' })}
         >
           Financial Fundraiser
         </button>
@@ -61,21 +81,28 @@ export function RequestFormPanel({
         <label>
           Category
           <select value={requestForm.category} onChange={(e) => setRequestForm({ ...requestForm, category: e.target.value })}>
-            <option value="FOOD">Food</option>
-            <option value="CLOTHES">Clothes</option>
-            <option value="VOLUNTEER">Volunteer</option>
-            <option value="MONEY">Money</option>
-            <option value="OTHER">Other</option>
+            {categories.map((category) => (
+              <option key={category.value} value={category.value}>
+                {category.label}
+              </option>
+            ))}
           </select>
         </label>
-        <label>
-          Urgency
-          <select value={requestForm.urgency} onChange={(e) => setRequestForm({ ...requestForm, urgency: e.target.value })}>
-            <option value="MEDIUM">Medium</option>
-            <option value="HIGH">High</option>
-            <option value="CRITICAL">Critical</option>
-          </select>
-        </label>
+        {isHelp ? (
+          <label>
+            Urgency
+            <select value={requestForm.urgency} onChange={(e) => setRequestForm({ ...requestForm, urgency: e.target.value })}>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+              <option value="CRITICAL">Critical</option>
+            </select>
+          </label>
+        ) : (
+          <label>
+            Fundraiser type
+            <input value="Financial campaign" readOnly />
+          </label>
+        )}
       </div>
 
       {/* Map location picker */}
@@ -90,15 +117,36 @@ export function RequestFormPanel({
         />
       </div>
 
-      {/* Authority document */}
+      <div className="form-grid">
+        <label>
+          {isHelp ? 'Help request image' : 'Fundraiser main image'}
+          <input
+            accept="image/*"
+            disabled={!isApproved || isUploading}
+            type="file"
+            onChange={(e) => onImageUpload(e.target.files?.[0])}
+          />
+        </label>
+        <label>
+          Authority or verification document
+          <input
+            accept="image/*,.pdf"
+            disabled={!isApproved || isUploading}
+            type="file"
+            onChange={(e) => onDocumentUpload(e.target.files?.[0])}
+          />
+        </label>
+      </div>
+      {requestForm.imageUrl && (
+        <a className="document-link" href={requestForm.imageUrl} target="_blank" rel="noreferrer">
+          <FileCheck2 size={16} />
+          Uploaded {isHelp ? 'help image' : 'fundraiser image'}
+        </a>
+      )}
+      {imageUploadMessage && <p className="form-message">{imageUploadMessage}</p>}
       <label>
-        Authority or verification letter
-        <input
-          accept="image/*,.pdf"
-          disabled={!isApproved || isUploading}
-          type="file"
-          onChange={(e) => onDocumentUpload(e.target.files?.[0])}
-        />
+        Verification requirement
+        <input value="Upload an image plus an authority/verification document before submitting." readOnly />
       </label>
       {requestForm.authorityDocumentUrl && (
         <a className="document-link" href={requestForm.authorityDocumentUrl} target="_blank" rel="noreferrer">
@@ -156,7 +204,14 @@ export function RequestFormPanel({
       <button
         className="primary-button"
         type="submit"
-        disabled={!isApproved || isUploading || !requestForm.authorityDocumentUrl || !requestForm.latitude || !requestForm.longitude}
+        disabled={
+          !isApproved ||
+          isUploading ||
+          !requestForm.imageUrl ||
+          !requestForm.authorityDocumentUrl ||
+          !requestForm.latitude ||
+          !requestForm.longitude
+        }
       >
         Submit for admin review
       </button>

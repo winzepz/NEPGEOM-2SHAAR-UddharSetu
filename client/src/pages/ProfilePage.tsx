@@ -22,10 +22,9 @@ export function ProfilePage({ myRequests, user, onLogin }: ProfilePageProps) {
         <dl>
           <InfoRow label="Name" value={user.fullName || 'Not set'} />
           <InfoRow label="Email" value={user.email || 'Not set'} />
-          <InfoRow label="Role" value={user.role || 'SOCIAL_WORKER'} />
+          <InfoRow label="Role" value={(user.role || 'SOCIAL_WORKER').replace('_', ' ')} />
           <InfoRow label="Status" value={user.status || 'PENDING'} />
-          <InfoRow label="User ID" value={user.id} />
-          <InfoRow label="Saved requests" value={String(myRequests.length)} />
+          <InfoRow label="Posts submitted" value={String(myRequests.length)} />
         </dl>
       </div>
     </section>

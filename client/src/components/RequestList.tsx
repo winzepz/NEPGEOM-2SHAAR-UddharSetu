@@ -5,7 +5,6 @@ import {
   Phone,
   HeartHandshake,
   Landmark,
-  Sparkles,
   ShieldAlert,
   CircleDollarSign,
   Package,
@@ -17,14 +16,8 @@ type RequestListProps = {
   title: string
   requests: ReliefPost[]
   onActionSuccess?: () => void
+  onOpenPost?: (post: ReliefPost) => void
 }
-
-const HUBS = [
-  'Kathmandu Relief Center',
-  'Lalitpur Operations Hub',
-  'Bhaktapur Logistics Hub',
-  'Pokhara Disaster Support Office',
-]
 
 const URGENCY_COLOR: Record<string, string> = {
   CRITICAL: 'var(--danger, #c0392b)',
@@ -32,11 +25,23 @@ const URGENCY_COLOR: Record<string, string> = {
   MEDIUM: 'var(--green)',
 }
 
+// Category cover photos (posts don't store an image, so we show a representative
+// one per category). The gradient + icon behind it is the fallback if it fails.
+const CATEGORY_IMAGE: Record<string, string> = {
+  FOOD: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=600&q=70',
+  CLOTHES: 'https://images.unsplash.com/photo-1489987707025-afc232f7ea0f?auto=format&fit=crop&w=600&q=70',
+  VOLUNTEER: 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=600&q=70',
+  MEDICAL: 'https://images.unsplash.com/photo-1516574187841-cb9cc2ca948b?auto=format&fit=crop&w=600&q=70',
+  SUPPLY: 'https://images.unsplash.com/photo-1580674285054-bed31e145f59?auto=format&fit=crop&w=600&q=70',
+  OTHER: 'https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?auto=format&fit=crop&w=600&q=70',
+}
+
 export function RequestList({
   emptyMessage = 'No posts to show yet.',
   requests,
   title,
   onActionSuccess,
+  onOpenPost,
 }: RequestListProps) {
   const [activeActionId, setActiveActionId] = useState<string | null>(null)
   const [activeActionType, setActiveActionType] = useState<'DONATE' | 'PLEDGE' | null>(null)
@@ -44,13 +49,10 @@ export function RequestList({
   const [phone, setPhone] = useState('')
   const [amount, setAmount] = useState('')
   const [quantity, setQuantity] = useState('')
-  const [hubName, setHubName] = useState(HUBS[0])
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [pledgeResult, setPledgeResult] = useState<{
-    token: string
     quantity: number
-    hub: string
     postTitle: string
   } | null>(null)
 
@@ -65,7 +67,6 @@ export function RequestList({
       setPhone('')
       setAmount('')
       setQuantity('')
-      setHubName(HUBS[0])
       setErrorMsg('')
       setPledgeResult(null)
     }
@@ -105,16 +106,15 @@ export function RequestList({
           quantity: Number(quantity),
           donorPhone: phone,
           donorName: name,
-          hubName,
         }),
       })
       const data = (await res.json().catch(() => ({}))) as {
-        pledge?: { secure_token: string; quantity: number; hub_name: string }
+        pledge?: { quantity: number }
         message?: string
       }
       if (!res.ok) throw new Error(data.message || 'Pledge submission failed.')
       if (data.pledge) {
-        setPledgeResult({ token: data.pledge.secure_token, quantity: data.pledge.quantity, hub: data.pledge.hub_name, postTitle: post.title })
+        setPledgeResult({ quantity: data.pledge.quantity, postTitle: post.title })
         onActionSuccess?.()
       }
     } catch (err) {
@@ -153,8 +153,18 @@ export function RequestList({
                 className={`post-card post-card--${isFund ? 'fund' : 'help'}${isActive ? ' post-card--active' : ''}`}
                 key={request.id}
               >
-                {/* ── Header: type chip + urgency ── */}
-                <div className="post-card-header">
+                {/* ── Cover image + overlaid badges ── */}
+                <div className={`post-card-cover post-card-cover--${(request.category || 'OTHER').toLowerCase()}`}>
+                  <span className="post-card-cover-icon">
+                    {isFund ? <CircleDollarSign size={40} /> : <Package size={40} />}
+                  </span>
+                  <img
+                    className="post-card-cover-img"
+                    src={request.imageUrl || CATEGORY_IMAGE[request.category] || CATEGORY_IMAGE.OTHER}
+                    alt={request.title}
+                    loading="lazy"
+                    onError={(e) => e.currentTarget.classList.add('post-card-cover-img--failed')}
+                  />
                   <div className="post-card-badges">
                     <span className={`post-badge post-badge--type post-badge--${isFund ? 'fund' : 'help'}`}>
                       {isFund ? <CircleDollarSign size={11} /> : <Package size={11} />}
@@ -162,7 +172,7 @@ export function RequestList({
                     </span>
                     {!isFund && (
                       <span
-                        className="post-badge post-badge--urgency"
+                        className="post-badge post-badge--urgency post-badge--urgency-solid"
                         style={{ color: URGENCY_COLOR[request.urgency] ?? 'var(--muted)' }}
                       >
                         <ShieldAlert size={11} />
@@ -171,40 +181,53 @@ export function RequestList({
                     )}
                     {progress >= 100 && (
                       <span className="post-badge post-badge--done">
-                        <Sparkles size={10} /> Fully Met
+                        Fully Met
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* ── Title + description ── */}
-                <div className="post-card-body">
+                {/* ── Title + description (click → detail) ── */}
+                <div
+                  className={`post-card-body${onOpenPost ? ' post-card-body--clickable' : ''}`}
+                  {...(onOpenPost
+                    ? {
+                        role: 'button',
+                        tabIndex: 0,
+                        onClick: () => onOpenPost(request),
+                        onKeyDown: (e: React.KeyboardEvent) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            onOpenPost(request)
+                          }
+                        },
+                      }
+                    : {})}
+                >
                   <h3 className="post-card-title">{request.title}</h3>
                   <p className="post-card-desc">{request.description}</p>
+                  {onOpenPost && <span className="post-card-viewlink">View details →</span>}
                 </div>
 
                 {/* ── Progress ── */}
                 <div className="post-card-progress">
                   <div className="post-card-progress-top">
-                    <div className="post-card-progress-labels">
-                      {isFund ? (
-                        <>
-                          <span className="progress-raised">Rs. {Number(fulfilledAmt).toLocaleString()}</span>
-                          {targetAmt > 0 && <span className="progress-goal">of Rs. {Number(targetAmt).toLocaleString()}</span>}
-                        </>
-                      ) : (
-                        <>
-                          <span className="progress-raised">{fulfilledQty} fulfilled</span>
-                          <span className="progress-goal">of {targetQty} units</span>
-                        </>
-                      )}
-                    </div>
+                    <span className="progress-raised">
+                      {isFund ? `Rs. ${Number(fulfilledAmt).toLocaleString()}` : `${fulfilledQty} fulfilled`}
+                    </span>
                     <span className={`post-card-pct${progress >= 100 ? ' post-card-pct--done' : ''}`}>
                       {progress}%
                     </span>
                   </div>
                   <div className="progress-track">
                     <span style={{ width: `${progress}%` }} />
+                  </div>
+                  <div className="post-card-progress-goal">
+                    {isFund
+                      ? targetAmt > 0
+                        ? `raised of Rs. ${Number(targetAmt).toLocaleString()} goal`
+                        : 'raised so far'
+                      : `of ${targetQty} units pledged`}
                   </div>
                 </div>
 
@@ -222,7 +245,11 @@ export function RequestList({
 
                 {/* ── Actions ── */}
                 <div className="post-card-actions">
-                  {isFund && progress < 100 && (
+                  {progress >= 100 ? (
+                    <span className="post-action-btn post-action-btn--met">
+                      {isFund ? 'Fully funded' : 'Goal reached'}
+                    </span>
+                  ) : isFund ? (
                     <button
                       className={`post-action-btn post-action-btn--primary post-action-btn--fund${isActive && activeActionType === 'DONATE' ? ' active' : ''}`}
                       type="button"
@@ -231,14 +258,12 @@ export function RequestList({
                       <Landmark size={13} />
                       Donate via Khalti
                     </button>
-                  )}
-                  {!isFund && progress < 100 && (
+                  ) : (
                     <button
                       className={`post-action-btn post-action-btn--primary post-action-btn--help${isActive && activeActionType === 'PLEDGE' ? ' active' : ''}`}
                       type="button"
                       onClick={() => toggleAction(request.id, 'PLEDGE')}
                     >
-                      <HeartHandshake size={13} />
                       Pledge Support
                     </button>
                   )}
@@ -318,26 +343,18 @@ export function RequestList({
                                 <input required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98XXXXXXXX" />
                               </label>
                             </div>
-                            <div className="form-grid">
-                              <label>
-                                Quantity *
-                                <input
-                                  required
-                                  type="number"
-                                  min="1"
-                                  max={targetQty - fulfilledQty || undefined}
-                                  value={quantity}
-                                  onChange={(e) => setQuantity(e.target.value)}
-                                  placeholder="Units"
-                                />
-                              </label>
-                              <label>
-                                Drop-off center
-                                <select value={hubName} onChange={(e) => setHubName(e.target.value)}>
-                                  {HUBS.map((h) => <option key={h} value={h}>{h}</option>)}
-                                </select>
-                              </label>
-                            </div>
+                            <label>
+                              Quantity *
+                              <input
+                                required
+                                type="number"
+                                min="1"
+                                max={targetQty - fulfilledQty || undefined}
+                                value={quantity}
+                                onChange={(e) => setQuantity(e.target.value)}
+                                placeholder="Units"
+                              />
+                            </label>
                             <button type="submit" className="primary-button" disabled={loading} style={{ width: '100%' }}>
                               {loading ? 'Submitting...' : 'Confirm Pledge'}
                             </button>
@@ -345,13 +362,8 @@ export function RequestList({
                           </form>
                         ) : (
                           <div className="post-panel-success page-enter">
-                            <Sparkles size={32} style={{ color: 'var(--green)' }} />
-                            <strong>Pledge Registered!</strong>
-                            <p>Drop off <strong>{pledgeResult.quantity} units</strong> at <strong>{pledgeResult.hub}</strong>.</p>
-                            <div className="pledge-token">
-                              <span>Drop-off token</span>
-                              <strong>{pledgeResult.token}</strong>
-                            </div>
+                            <strong>Pledge registered!</strong>
+                            <p>Your support for <strong>{pledgeResult.quantity} units</strong> has been added to this request.</p>
                           </div>
                         )}
                       </>

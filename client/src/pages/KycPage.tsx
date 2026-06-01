@@ -94,16 +94,16 @@ export function KycPage({
   if (kycSubmission && kycSubmission.status === 'REJECTED') {
     return (
       <section className="content-page narrow-page page-enter">
-        <div className="notice-panel" style={{ borderLeft: '4px solid var(--danger)' }}>
-          <div className="status-icon" style={{ color: 'var(--danger)', background: '#f3d0c9' }}>
+        <div className="notice-panel notice-panel--danger">
+          <div className="status-icon status-icon--danger">
             <AlertTriangle size={24} />
           </div>
-          <strong style={{ color: 'var(--danger)' }}>Verification Needs Attention</strong>
+          <strong className="notice-title--danger">Verification needs attention</strong>
           <p>Your KYC submission was rejected by the administration team.</p>
           {kycSubmission.adminNotes && (
-            <div style={{ padding: '12px', background: 'rgba(163, 58, 44, 0.08)', borderRadius: '6px', margin: '8px 0', border: '1px solid rgba(163, 58, 44, 0.15)' }}>
-              <strong>Admin feedback:</strong>
-              <p style={{ margin: '4px 0 0', fontStyle: 'italic' }}>{kycSubmission.adminNotes}</p>
+            <div className="admin-feedback">
+              <strong>Admin feedback</strong>
+              <p>{kycSubmission.adminNotes}</p>
             </div>
           )}
           <button className="primary-button" type="button" onClick={() => setKycSubmission(null)}>
