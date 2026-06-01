@@ -1,70 +1,83 @@
-import { BadgeCheck, HandHeart, Landmark, MapPin } from 'lucide-react'
-import type { ReliefPost } from '../types/app'
+import { BadgeCheck, Landmark, Target, TrendingUp } from 'lucide-react'
+import type { Page, ReliefPost } from '../types/app'
 import { PageHeader } from '../components/PageHeader'
 import { RequestList } from '../components/RequestList'
 
 type CampaignsPageProps = {
   publicRequests: ReliefPost[]
+  onNavigate?: (page: Page) => void
   onActionSuccess?: () => void
 }
 
-const categories = ['FOOD', 'CLOTHES', 'VOLUNTEER', 'MONEY', 'OTHER']
-
-export function CampaignsPage({ publicRequests, onActionSuccess }: CampaignsPageProps) {
-  const fundraisingPosts = publicRequests.filter((request) => request.postType === 'FUNDRAISING')
-  const helpPosts = publicRequests.filter((request) => request.postType === 'HELP')
+export function CampaignsPage({ publicRequests, onNavigate, onActionSuccess }: CampaignsPageProps) {
+  const campaigns = publicRequests.filter((p) => p.postType === 'FUNDRAISING')
+  const totalRaised = campaigns.reduce((sum, p) => sum + Number(p.fulfilledAmount ?? 0), 0)
+  const withGoal = campaigns.filter((p) => p.targetAmount != null).length
+  const totalGoal = campaigns.reduce((sum, p) => sum + Number(p.targetAmount ?? 0), 0)
 
   return (
     <section className="content-page page-enter">
       <PageHeader
-        eyebrow="Campaigns"
-        title="Approved relief campaigns"
-        body="Public campaigns appear only after social worker KYC and admin review of the submitted authority document."
+        eyebrow="Fundraising"
+        title="Active fundraising campaigns"
+        body="Financial campaigns submitted by verified social workers and approved by admins. Every campaign includes local authority documentation."
       />
 
       <div className="campaign-summary">
-        <SummaryCard icon={<BadgeCheck size={20} />} label="Approved posts" value={publicRequests.length} />
-        <SummaryCard icon={<Landmark size={20} />} label="Fundraisers" value={fundraisingPosts.length} />
-        <SummaryCard icon={<HandHeart size={20} />} label="Help requests" value={helpPosts.length} />
+        <SummaryCard icon={<BadgeCheck size={20} />} label="Live campaigns" value={campaigns.length} />
+        <SummaryCard
+          icon={<Landmark size={20} />}
+          label="Total raised (NPR)"
+          value={totalRaised > 0 ? `Rs. ${totalRaised.toLocaleString()}` : 'Rs. 0'}
+        />
+        <SummaryCard
+          icon={<Target size={20} />}
+          label="Total goal (NPR)"
+          value={totalGoal > 0 ? `Rs. ${totalGoal.toLocaleString()}` : '—'}
+        />
       </div>
 
-      <div className="campaign-grid">
-        {categories.map((category) => {
-          const categoryPosts = publicRequests.filter((request) => request.category === category)
+      {totalGoal > 0 && (
+        <div className="campaign-overall-progress">
+          <div className="campaign-overall-meta">
+            <span className="campaign-overall-label">
+              <TrendingUp size={14} />
+              Overall campaign progress
+            </span>
+            <span className="campaign-overall-pct">
+              {Math.min(Math.round((totalRaised / totalGoal) * 100), 100)}%
+            </span>
+          </div>
+          <div className="progress-track">
+            <span style={{ width: `${Math.min(Math.round((totalRaised / totalGoal) * 100), 100)}%` }} />
+          </div>
+          <p className="campaign-overall-sub">
+            Rs. {totalRaised.toLocaleString()} raised of Rs. {totalGoal.toLocaleString()} total goal across {withGoal} campaign{withGoal !== 1 ? 's' : ''}
+          </p>
+        </div>
+      )}
 
-          return (
-            <article className="campaign-card" key={category}>
-              <div className="campaign-icon">
-                <MapPin size={22} />
-              </div>
-              <h2>{formatLabel(category)}</h2>
-              <p>{categoryPosts.length} approved posts</p>
-              <div className="progress-track">
-                <span style={{ width: `${Math.min(categoryPosts.length * 20, 100)}%` }} />
-              </div>
-            </article>
-          )
-        })}
-      </div>
+      <RequestList title="Fundraising campaigns" requests={campaigns} onActionSuccess={onActionSuccess} />
 
-      <section className="split-panel">
-        <RequestList title="Fundraising campaigns" requests={fundraisingPosts} onActionSuccess={onActionSuccess} />
-        <RequestList title="Help campaigns" requests={helpPosts} onActionSuccess={onActionSuccess} />
-      </section>
+      {onNavigate && (
+        <div className="toolbar" style={{ justifyContent: 'center', marginTop: '8px' }}>
+          <button className="secondary-button" type="button" onClick={() => onNavigate('requests')}>
+            View help requests instead
+          </button>
+        </div>
+      )}
     </section>
   )
 }
 
-function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number | string }) {
   return (
     <article>
       <div className="feature-icon">{icon}</div>
-      <span>{value}</span>
-      <p>{label}</p>
+      <div className="campaign-summary-text">
+        <span>{value}</span>
+        <p>{label}</p>
+      </div>
     </article>
   )
-}
-
-function formatLabel(value: string) {
-  return value.toLowerCase().replace(/^\w/, (character) => character.toUpperCase())
 }

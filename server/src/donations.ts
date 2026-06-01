@@ -63,15 +63,16 @@ export async function initiatePayment(request: Request, response: Response) {
     )
 
     // Khalti integration parameters
-    const khaltiSecretKey = process.env.KHALTI_SECRET_KEY || 'ba85e71e177b42b8b043a0d36d0d639e'
+    const khaltiSecretKey = process.env.KHALTI_SECRET_KEY
+    if (!khaltiSecretKey) throw new Error('Khalti secret key is not configured.')
     const amountInPaisa = Math.round(parsedAmount * 100)
 
-    // Construct backend return_url to point back to the client app
-    const returnUrl = `http://localhost:5173/`
+    const siteUrl = process.env.CLIENT_BASE_URL || 'http://localhost:5175'
+    const returnUrl = `${siteUrl}/`
 
     const khaltiBody = {
       return_url: returnUrl,
-      website_url: 'http://localhost:5173/',
+      website_url: siteUrl,
       amount: amountInPaisa,
       purchase_order_id: pledgeId,
       purchase_order_name: `Donation: ${post.title.substring(0, 30)}`,
@@ -138,7 +139,8 @@ export async function verifyPayment(request: Request, response: Response) {
       return
     }
 
-    const khaltiSecretKey = process.env.KHALTI_SECRET_KEY || 'ba85e71e177b42b8b043a0d36d0d639e'
+    const khaltiSecretKey = process.env.KHALTI_SECRET_KEY
+    if (!khaltiSecretKey) throw new Error('Khalti secret key is not configured.')
 
     const khaltiResponse = await fetch('https://a.khalti.com/api/v2/epayment/lookup/', {
       method: 'POST',
@@ -149,19 +151,29 @@ export async function verifyPayment(request: Request, response: Response) {
       body: JSON.stringify({ pidx: parsedPidx }),
     })
 
-    const khaltiData = await khaltiResponse.json() as { pidx?: string; status?: string; transaction_id?: string; total_amount?: number }
+    const khaltiData = await khaltiResponse.json() as {
+      pidx?: string
+      status?: string
+      transaction_id?: string
+      total_amount?: number  // paisa
+    }
 
     if (!khaltiResponse.ok || khaltiData.status !== 'Completed') {
       response.status(400).json({ message: 'Payment verification failed or is not completed.' })
       return
     }
 
+    // Use Khalti-confirmed amount (paisa → NPR) so we credit exactly what was charged
+    const confirmedAmountNPR = khaltiData.total_amount != null
+      ? khaltiData.total_amount / 100
+      : (pledge.amount ? Number(pledge.amount) : 0)
+
     // Run PostgreSQL transaction with row-level locking
     await db.query('BEGIN')
     try {
       // 1. Lock the relief post row
       const postQuery = await db.query(
-        `select id, fulfilled_amount from relief_posts where id = $1 for update`,
+        `select id, title, fulfilled_amount from relief_posts where id = $1 for update`,
         [pledge.post_id]
       )
       const post = postQuery.rows[0]
@@ -169,32 +181,41 @@ export async function verifyPayment(request: Request, response: Response) {
         throw new Error('Associated relief post not found.')
       }
 
-      // Re-verify pledge state inside transaction
+      // Re-verify pledge state inside transaction to prevent double-credit
       const lockPledgeQuery = await db.query(
         `select status from relief_pledges where id = $1 for update`,
         [pledge.id]
       )
       if (lockPledgeQuery.rows[0]?.status === 'COMPLETED') {
         await db.query('COMMIT')
-        response.json({ message: 'Payment already completed successfully.', pledge })
+        response.json({
+          message: 'Payment already completed successfully.',
+          status: 'Completed',
+          campaignTitle: post.title,
+          amountNPR: confirmedAmountNPR,
+        })
         return
       }
 
-      // 2. Update pledge status
+      // 2. Update pledge: mark completed, store confirmed amount
       await db.query(
-        `update relief_pledges set status = 'COMPLETED', updated_at = now() where id = $1`,
-        [pledge.id]
+        `update relief_pledges set status = 'COMPLETED', amount = $1, updated_at = now() where id = $2`,
+        [confirmedAmountNPR, pledge.id]
       )
 
-      // 3. Update relief post balance
-      const actualAmount = pledge.amount ? Number(pledge.amount) : 0
+      // 3. Add confirmed amount to the relief post
       await db.query(
         `update relief_posts set fulfilled_amount = fulfilled_amount + $1, updated_at = now() where id = $2`,
-        [actualAmount, pledge.post_id]
+        [confirmedAmountNPR, pledge.post_id]
       )
 
       await db.query('COMMIT')
-      response.json({ message: 'Payment verified and credited successfully.', status: 'Completed' })
+      response.json({
+        message: 'Payment verified and credited successfully.',
+        status: 'Completed',
+        campaignTitle: post.title,
+        amountNPR: confirmedAmountNPR,
+      })
     } catch (transactionError) {
       await db.query('ROLLBACK')
       throw transactionError

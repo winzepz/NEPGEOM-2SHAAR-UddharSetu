@@ -1,7 +1,8 @@
+import './env.js'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
-import dotenv from 'dotenv'
 import express from 'express'
+import type { NextFunction, Request, Response } from 'express'
 import { OAuth2Client } from 'google-auth-library'
 import {
   clearSessionCookie,
@@ -13,12 +14,7 @@ import {
 } from './auth.js'
 import { createUploadSignature } from './cloudinary.js'
 import { checkDatabaseConnection, initializeDatabase } from './db.js'
-import {
-  createHelpRequest,
-  listOpenHelpRequests,
-  listUserHelpRequests,
-  parseHelpRequestInput,
-} from './helpRequests.js'
+import { listOpenHelpRequests, listUserHelpRequests } from './helpRequests.js'
 import {
   getLatestUserKyc,
   listKycSubmissions,
@@ -42,17 +38,29 @@ import {
   completeMaterialPledge,
 } from './donations.js'
 
-dotenv.config()
-
 const app = express()
 const port = Number(process.env.PORT) || 5000
 const googleClientId = process.env.GOOGLE_CLIENT_ID
 const googleClient = new OAuth2Client(googleClientId)
 
+async function requireSuperAdmin(request: Request, response: Response, next: NextFunction) {
+  const user = await getSessionUser(request)
+  if (!user || user.role !== 'SUPER_ADMIN') {
+    response.status(403).json({ message: 'Admin role required.' })
+    return
+  }
+  response.locals.user = user
+  next()
+}
+
+function getRouteParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
+}
+
 app.use(
   cors({
     credentials: true,
-    origin: ['http://localhost:5173', 'http://localhost:5174'],
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
   }),
 )
 app.use(cookieParser())
@@ -89,18 +97,34 @@ app.post('/api/auth/google', async (request, response) => {
     return
   }
 
+  let payload:
+    | {
+        sub?: string
+        email?: string
+        email_verified?: boolean
+        name?: string
+        picture?: string
+      }
+    | undefined
+
   try {
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,
       audience: googleClientId,
     })
-    const payload = ticket.getPayload()
+    payload = ticket.getPayload()
+  } catch (error) {
+    console.error('Google token verification failed:', error)
+    response.status(401).json({ message: 'Invalid Google credential.' })
+    return
+  }
 
-    if (!payload?.sub || !payload.email || !payload.email_verified) {
-      response.status(401).json({ message: 'Google account email is not verified.' })
-      return
-    }
+  if (!payload?.sub || !payload.email || !payload.email_verified) {
+    response.status(401).json({ message: 'Google account email is not verified.' })
+    return
+  }
 
+  try {
     const user = await upsertGoogleUser({
       googleId: payload.sub,
       email: payload.email,
@@ -114,8 +138,9 @@ app.post('/api/auth/google', async (request, response) => {
     response.json({
       user,
     })
-  } catch {
-    response.status(401).json({ message: 'Invalid Google credential.' })
+  } catch (error) {
+    console.error('Google account session creation failed:', error)
+    response.status(500).json({ message: 'Google sign-in succeeded, but the server could not create your session.' })
   }
 })
 
@@ -238,28 +263,16 @@ app.post('/api/posts', async (request, response) => {
   }
 })
 
-app.get('/api/admin/kyc', async (request, response) => {
-  const user = await getSessionUser(request)
-
-  if (!user || user.role !== 'SUPER_ADMIN') {
-    response.status(403).json({ message: 'Admin role required.' })
-    return
-  }
-
+app.get('/api/admin/kyc', requireSuperAdmin, async (_request, response) => {
   response.json({ submissions: await listKycSubmissions('PENDING') })
 })
 
-app.post('/api/admin/kyc/:id/review', async (request, response) => {
-  const user = await getSessionUser(request)
-
-  if (!user || user.role !== 'SUPER_ADMIN') {
-    response.status(403).json({ message: 'Admin role required.' })
-    return
-  }
-
+app.post('/api/admin/kyc/:id/review', requireSuperAdmin, async (request, response) => {
   try {
+    const id = getRouteParam(request.params.id)
     const input = parseReviewInput(request.body)
-    const submission = await reviewKycSubmission(request.params.id, user.id, input.status, input.adminNotes)
+    const adminId = (response.locals.user as { id: string }).id
+    const submission = id ? await reviewKycSubmission(id, adminId, input.status, input.adminNotes) : null
 
     if (!submission) {
       response.status(404).json({ message: 'KYC submission not found.' })
@@ -272,28 +285,16 @@ app.post('/api/admin/kyc/:id/review', async (request, response) => {
   }
 })
 
-app.get('/api/admin/posts', async (request, response) => {
-  const user = await getSessionUser(request)
-
-  if (!user || user.role !== 'SUPER_ADMIN') {
-    response.status(403).json({ message: 'Admin role required.' })
-    return
-  }
-
+app.get('/api/admin/posts', requireSuperAdmin, async (_request, response) => {
   response.json({ posts: await listReviewPosts() })
 })
 
-app.post('/api/admin/posts/:id/review', async (request, response) => {
-  const user = await getSessionUser(request)
-
-  if (!user || user.role !== 'SUPER_ADMIN') {
-    response.status(403).json({ message: 'Admin role required.' })
-    return
-  }
-
+app.post('/api/admin/posts/:id/review', requireSuperAdmin, async (request, response) => {
   try {
+    const id = getRouteParam(request.params.id)
     const input = parseReviewInput(request.body)
-    const post = await reviewPost(request.params.id, user.id, input.status, input.adminNotes)
+    const adminId = (response.locals.user as { id: string }).id
+    const post = id ? await reviewPost(id, adminId, input.status, input.adminNotes) : null
 
     if (!post) {
       response.status(404).json({ message: 'Post not found.' })

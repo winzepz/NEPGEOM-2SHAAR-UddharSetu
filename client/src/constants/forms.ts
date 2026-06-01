@@ -34,9 +34,9 @@ export const initialKycForm: KycForm = {
 
 export const navItems: Array<{ page: Page; label: string }> = [
   { page: 'home', label: 'Home' },
-  { page: 'requests', label: 'Requests' },
-  { page: 'campaigns', label: 'Campaigns' },
-  { page: 'worker', label: 'Worker' },
+  { page: 'requests', label: 'Help Requests' },
+  { page: 'campaigns', label: 'Fundraising' },
+  { page: 'worker', label: 'Dashboard' },
   { page: 'kyc', label: 'KYC' },
   { page: 'admin', label: 'Admin' },
 ]

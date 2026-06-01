@@ -83,31 +83,48 @@ function App() {
 
     loadPublicPosts()
 
-    // Check for Khalti callback parameters
+    // Handle Khalti payment callback
     const params = new URLSearchParams(window.location.search)
     const pidx = params.get('pidx')
+    const khaltiStatus = params.get('status')
     if (pidx) {
-      setAuthMessage('Verifying donation payment...')
+      window.history.replaceState({}, document.title, window.location.pathname)
+
+      if (khaltiStatus && khaltiStatus !== 'Completed') {
+        // User cancelled or payment failed on Khalti side — no need to call verify
+        setAuthMessage(
+          khaltiStatus === 'User canceled'
+            ? 'Payment was cancelled. No charge was made.'
+            : `Payment did not complete (${khaltiStatus}).`
+        )
+        return
+      }
+
+      setAuthMessage('Verifying your donation…')
       fetch('/api/donations/verify', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pidx }),
       })
         .then(async (res) => {
-          const data = (await res.json().catch(() => ({}))) as { message?: string }
-          if (res.ok) {
-            setAuthMessage('Thank you! Your donation was received successfully.')
-            loadPublicPosts()
-          } else {
-            setAuthMessage(data.message || 'Donation verification failed.')
+          const data = (await res.json().catch(() => ({}))) as {
+            message?: string
+            campaignTitle?: string
+            amountNPR?: number
           }
-          window.history.replaceState({}, document.title, window.location.pathname)
+          if (res.ok && data.amountNPR) {
+            setAuthMessage(
+              `✓ Donation of Rs. ${data.amountNPR.toLocaleString()} received for "${data.campaignTitle}". Thank you!`
+            )
+          } else if (res.ok) {
+            setAuthMessage('Thank you! Your donation was received successfully.')
+          } else {
+            setAuthMessage(data.message || 'Donation verification failed. Please contact support.')
+          }
+          loadPublicPosts()
         })
         .catch(() => {
-          setAuthMessage('Network error verifying payment.')
-          window.history.replaceState({}, document.title, window.location.pathname)
+          setAuthMessage('Network error while verifying payment. Please contact support if you were charged.')
         })
     }
   }, [])
@@ -123,14 +140,26 @@ function App() {
 
         return response.json() as Promise<GoogleAuthResponse>
       })
-      .then((data) => setUser(data.user))
+      .then((data) => {
+        setUser(data.user)
+        if (data.user.role === 'SUPER_ADMIN') {
+          setPage('admin')
+        }
+      })
       .catch(() => setUser(null))
   }, [])
 
   useEffect(() => {
     if (user) {
-      loadMyPosts()
-      fetchMyKyc()
+      if (user.role === 'SUPER_ADMIN') {
+        setMyRequests([])
+        setKycSubmission(null)
+        setKycSubmitted(false)
+        loadAdminReviewData()
+      } else {
+        loadMyPosts()
+        fetchMyKyc()
+      }
     } else {
       setMyRequests([])
       setKycSubmission(null)
@@ -154,7 +183,8 @@ function App() {
       })
 
       if (!response.ok) {
-        throw new Error('Google verification failed')
+        const errorData = (await response.json().catch(() => ({}))) as { message?: string }
+        throw new Error(errorData.message || 'Google verification failed')
       }
 
       const data = (await response.json()) as GoogleAuthResponse
@@ -163,10 +193,15 @@ function App() {
       setUser(data.user)
       setAuthMessage(authMode === 'login' ? `Welcome back, ${displayName}.` : `Account created for ${displayName}.`)
       setAuthMode(null)
-      await fetchMyKyc()
-      setPage(data.user.status === 'APPROVED' ? 'worker' : 'kyc')
-    } catch {
-      setAuthMessage('Google sign-in worked, but server verification failed.')
+      if (data.user.role === 'SUPER_ADMIN') {
+        setKycSubmission(null)
+        setPage('admin')
+      } else {
+        await fetchMyKyc()
+        setPage(data.user.status === 'APPROVED' ? 'worker' : 'kyc')
+      }
+    } catch (error) {
+      setAuthMessage(error instanceof Error ? error.message : 'Google sign-in worked, but server verification failed.')
     }
   }
 
@@ -383,12 +418,30 @@ function App() {
     }
   }
 
+  // Auto-dismiss auth messages after 7 seconds
+  useEffect(() => {
+    if (!authMessage) return
+    const timer = setTimeout(() => setAuthMessage(''), 7000)
+    return () => clearTimeout(timer)
+  }, [authMessage])
+
   const openAuth = (mode: AuthMode) => {
     setAuthMode(mode)
     setAuthMessage('')
   }
 
   const goToPage = (nextPage: Page) => {
+    if (user?.role === 'SUPER_ADMIN' && nextPage !== 'home' && nextPage !== 'admin') {
+      setPage('admin')
+      setIsMenuOpen(false)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    if (nextPage === 'admin' && user?.role !== 'SUPER_ADMIN') {
+      return
+    }
+
     if (nextPage === 'worker' && user && user.status !== 'APPROVED') {
       setPage('kyc')
       setKycMessage(
@@ -427,7 +480,6 @@ function App() {
           publicRequests={publicRequests}
           user={user}
           onLogin={() => openAuth('login')}
-          onSignup={() => openAuth('signup')}
           onNavigate={goToPage}
           onActionSuccess={loadPublicPosts}
         />
@@ -436,13 +488,15 @@ function App() {
       {page === 'requests' && (
         <RequestsPage
           publicRequests={publicRequests}
-          onSignup={() => openAuth('signup')}
+          onLogin={() => openAuth('login')}
+          onNavigate={goToPage}
           onActionSuccess={loadPublicPosts}
         />
       )}
       {page === 'campaigns' && (
         <CampaignsPage
           publicRequests={publicRequests}
+          onNavigate={goToPage}
           onActionSuccess={loadPublicPosts}
         />
       )}

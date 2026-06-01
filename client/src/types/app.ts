@@ -99,7 +99,7 @@ export type KycSubmissionsResponse = {
   submissions: KycSubmission[]
 }
 
-export type AuthMode = 'login' | 'signup'
+export type AuthMode = 'login'
 export type Page = 'home' | 'requests' | 'campaigns' | 'worker' | 'kyc' | 'admin' | 'profile'
 
 export type RequestForm = {

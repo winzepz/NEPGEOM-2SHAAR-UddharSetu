@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ClipboardCheck } from 'lucide-react'
+import { BadgeCheck, ClipboardCheck, FilePlus2, FileSearch, ListChecks } from 'lucide-react'
 import type { AuthUser, FileUploadHandler, ReliefPost, RequestForm, RequestSubmitHandler } from '../types/app'
 import { LockedPage } from '../components/LockedPage'
 import { PageHeader } from '../components/PageHeader'
@@ -24,6 +24,8 @@ type WorkerPageProps = {
   onActionSuccess?: () => void
 }
 
+type DashTab = 'create' | 'posts' | 'verify'
+
 export function WorkerPage({
   formMessage,
   isApproved,
@@ -44,13 +46,13 @@ export function WorkerPage({
   const [loading, setLoading] = useState(false)
   const [successMsg, setSuccessMsg] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
+  const [activeTab, setActiveTab] = useState<DashTab>('create')
 
   const handleVerifyToken = async (e: React.FormEvent) => {
     e.preventDefault()
     setSuccessMsg('')
     setErrorMsg('')
     setLoading(true)
-
     try {
       const res = await fetch('/api/worker/pledges/complete', {
         method: 'POST',
@@ -58,16 +60,10 @@ export function WorkerPage({
         body: JSON.stringify({ secureToken: tokenInput }),
       })
       const data = (await res.json().catch(() => ({}))) as { message?: string }
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Verification failed.')
-      }
-
+      if (!res.ok) throw new Error(data.message || 'Verification failed.')
       setSuccessMsg(data.message || 'Drop-off verified and completed successfully!')
       setTokenInput('')
-      if (onActionSuccess) {
-        onActionSuccess()
-      }
+      onActionSuccess?.()
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -76,12 +72,11 @@ export function WorkerPage({
   }
 
   if (!user) {
-    return <LockedPage title="Worker console" body="Login with Google to access the worker dashboard." onLogin={onLogin} />
+    return <LockedPage title="Dashboard" body="Login with Google to access your social worker dashboard." onLogin={onLogin} />
   }
 
   if (!isApproved) {
     const isRejected = user.status === 'REJECTED'
-
     return (
       <section className="content-page narrow-page page-enter">
         <PageHeader
@@ -108,65 +103,109 @@ export function WorkerPage({
     )
   }
 
+  const statusColor = user.status === 'APPROVED' ? 'var(--green)' : user.status === 'REJECTED' ? 'var(--danger)' : undefined
+
   return (
     <section className="content-page page-enter">
-      <PageHeader eyebrow="Social worker console" title="Submit a verified post" body="Create help requests or fundraising campaigns with location, contact, and authority proof." />
-
-      <div className="stats-grid">
-        <StatCard label="Total requests" value={myRequests.length} />
-        <StatCard label="Approved posts" value={myOpenRequests} />
-        <StatCard label="Account status" value={user.status || 'PENDING'} />
-      </div>
-      <section className="split-panel">
-        <RequestFormPanel
-          formMessage={formMessage}
-          isApproved={isApproved}
-          isUploading={isUploading}
-          requestForm={requestForm}
-          setRequestForm={setRequestForm}
-          uploadMessage={uploadMessage}
-          onCreateRequest={onCreateRequest}
-          onDocumentUpload={onDocumentUpload}
+      {/* ── Header ── */}
+      <div className="dash-header">
+        <PageHeader
+          eyebrow="Dashboard"
+          title={`Welcome, ${user.fullName?.split(' ')[0] ?? 'Worker'}`}
+          body="Manage your verified relief posts, confirm drop-offs, and track your campaign impact."
         />
-        <div style={{ display: 'grid', gap: '20px' }}>
-          <div className="form-panel" style={{ padding: '20px' }}>
-            <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontSize: '18px', color: 'var(--primary-dark)' }}>
-              <ClipboardCheck size={20} />
-              Pledge Drop-off Verification
-            </h2>
-            <p style={{ margin: '8px 0', fontSize: '13px', color: 'var(--muted)', lineHeight: '1.4' }}>
-              When a donor drops off pledged items, enter their alphanumeric token below to complete and credit the pledge.
-            </p>
-            <form onSubmit={handleVerifyToken} style={{ display: 'grid', gap: '10px', marginTop: '8px' }}>
-              <label style={{ display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 900, color: 'var(--primary-dark)', width: '100%' }}>
-                Drop-off Token (e.g. US-XXXXXX)
-                <input
-                  required
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  placeholder="Enter token code"
-                  style={{
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    border: '1px solid var(--line)',
-                    background: 'var(--surface-strong)',
-                    fontSize: '14px',
-                    textTransform: 'uppercase',
-                    width: '100%'
-                  }}
-                />
-              </label>
-              <button className="primary-button" type="submit" disabled={loading} style={{ minHeight: '38px' }}>
-                {loading ? 'Verifying...' : 'Verify & Complete Drop-off'}
-              </button>
-            </form>
-            {successMsg && <p style={{ color: 'var(--green)', margin: '8px 0 0', fontSize: '13px', fontWeight: 900 }}>{successMsg}</p>}
-            {errorMsg && <p style={{ color: 'var(--danger)', margin: '8px 0 0', fontSize: '13px', fontWeight: 900 }}>{errorMsg}</p>}
-          </div>
+      </div>
 
-          <RequestList title="My submitted posts" requests={myRequests} />
+      {/* ── Stats ── */}
+      <div className="stats-grid">
+        <StatCard icon={<ListChecks size={18} />} label="Total posts submitted" value={myRequests.length} />
+        <StatCard icon={<BadgeCheck size={18} />} label="Approved & live" value={myOpenRequests} accentColor="var(--green)" />
+        <StatCard icon={<ClipboardCheck size={18} />} label="Account status" value={user.status || 'PENDING'} accentColor={statusColor} />
+      </div>
+
+      {/* ── Tab bar ── */}
+      <nav className="dash-tabs">
+        <button
+          type="button"
+          className={`dash-tab-btn${activeTab === 'create' ? ' active' : ''}`}
+          onClick={() => setActiveTab('create')}
+        >
+          <FilePlus2 size={15} />
+          Create post
+        </button>
+        <button
+          type="button"
+          className={`dash-tab-btn${activeTab === 'posts' ? ' active' : ''}`}
+          onClick={() => setActiveTab('posts')}
+        >
+          <FileSearch size={15} />
+          My posts
+          {myRequests.length > 0 && <span className="dash-tab-count">{myRequests.length}</span>}
+        </button>
+        <button
+          type="button"
+          className={`dash-tab-btn${activeTab === 'verify' ? ' active' : ''}`}
+          onClick={() => setActiveTab('verify')}
+        >
+          <ClipboardCheck size={15} />
+          Verify drop-off
+        </button>
+      </nav>
+
+      {/* ── Create post tab ── */}
+      {activeTab === 'create' && (
+        <div className="page-enter">
+          <RequestFormPanel
+            formMessage={formMessage}
+            isApproved={isApproved}
+            isUploading={isUploading}
+            requestForm={requestForm}
+            setRequestForm={setRequestForm}
+            uploadMessage={uploadMessage}
+            onCreateRequest={onCreateRequest}
+            onDocumentUpload={onDocumentUpload}
+          />
         </div>
-      </section>
+      )}
+
+      {/* ── My posts tab ── */}
+      {activeTab === 'posts' && (
+        <div className="page-enter">
+          <RequestList title="My submitted posts" requests={myRequests} onActionSuccess={onActionSuccess} />
+        </div>
+      )}
+
+      {/* ── Verify drop-off tab ── */}
+      {activeTab === 'verify' && (
+        <div className="dash-verify-panel page-enter">
+          <div className="dash-verify-header">
+            <ClipboardCheck size={22} />
+            <div>
+              <h2>Pledge drop-off verification</h2>
+              <p>When a donor arrives with pledged items, enter their token to mark the drop-off complete and credit the post.</p>
+            </div>
+          </div>
+          <form className="dash-verify-form" onSubmit={handleVerifyToken}>
+            <label className="dash-verify-label">
+              Drop-off token
+              <span className="dash-verify-hint">e.g. US-A3F9B2</span>
+              <input
+                required
+                className="dash-verify-input"
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
+                placeholder="US-XXXXXX"
+                spellCheck={false}
+              />
+            </label>
+            <button className="primary-button" type="submit" disabled={loading}>
+              {loading ? 'Verifying…' : 'Verify & complete drop-off'}
+            </button>
+            {successMsg && <p className="dash-verify-success">{successMsg}</p>}
+            {errorMsg && <p className="dash-verify-error">{errorMsg}</p>}
+          </form>
+        </div>
+      )}
     </section>
   )
 }

@@ -2,6 +2,7 @@ import { LogOut, Menu, UserRoundCheck, X } from 'lucide-react'
 import logo from '../assets/logo.svg'
 import { navItems } from '../constants/forms'
 import type { AuthMode, AuthUser, Page } from '../types/app'
+import { useMemo } from 'react'
 
 type TopbarProps = {
   authMode: AuthMode | null
@@ -15,6 +16,13 @@ type TopbarProps = {
 }
 
 export function Topbar({ isMenuOpen, page, user, onAuthOpen, onLogout, onMenuToggle, onNavigate }: TopbarProps) {
+  const visibleNavItems = useMemo(() => {
+    if (user?.role === 'SUPER_ADMIN') {
+      return navItems.filter((item) => item.page === 'home' || item.page === 'admin')
+    }
+    return navItems.filter((item) => item.page !== 'admin')
+  }, [user?.role])
+
   return (
     <header className="topbar">
       <button className="brand-button" type="button" onClick={() => onNavigate('home')}>
@@ -26,7 +34,7 @@ export function Topbar({ isMenuOpen, page, user, onAuthOpen, onLogout, onMenuTog
       </button>
 
       <nav className={isMenuOpen ? 'main-nav open' : 'main-nav'} aria-label="Primary navigation">
-        {navItems.map((item) => (
+        {visibleNavItems.map((item) => (
           <button className={page === item.page ? 'active' : ''} key={item.page} type="button" onClick={() => onNavigate(item.page)}>
             {item.label}
           </button>
@@ -35,8 +43,12 @@ export function Topbar({ isMenuOpen, page, user, onAuthOpen, onLogout, onMenuTog
 
       {user ? (
         <div className="user-menu" aria-label="Authenticated user">
-          <span className={`status-badge ${user.status?.toLowerCase()}`}>{user.status}</span>
-          <button className="avatar-button" type="button" onClick={() => onNavigate('profile')}>
+          {user.role !== 'SUPER_ADMIN' && <span className={`status-badge ${user.status?.toLowerCase()}`}>{user.status}</span>}
+          <button
+            className="avatar-button"
+            type="button"
+            onClick={() => user.role !== 'SUPER_ADMIN' && onNavigate('profile')}
+          >
             {user.picture ? <img src={user.picture} alt="" /> : <UserRoundCheck size={18} />}
             <span>{user.fullName || 'Profile'}</span>
           </button>
@@ -48,9 +60,6 @@ export function Topbar({ isMenuOpen, page, user, onAuthOpen, onLogout, onMenuTog
         <div className="auth-actions" aria-label="Authentication">
           <button className="ghost-button" type="button" onClick={() => onAuthOpen('login')}>
             Login
-          </button>
-          <button className="primary-button compact" type="button" onClick={() => onAuthOpen('signup')}>
-            Sign up
           </button>
         </div>
       )}
